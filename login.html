@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Indoo — Sign In</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg:#faf8f5; --white:#ffffff; --border:#ede9e4; --border2:#ddd8d0;
+      --ink:#2d2926; --ink2:#6b6560; --ink3:#aba49c; --ink4:#cec8c0;
+      --peach:#ff8c6b; --peach-l:#fff0ec; --peach-m:#ffd4c8;
+      --mint:#34c98e;  --mint-l:#edfbf4;  --mint-m:#b6f0d6;
+      --lav:#9b7ff4;   --lav-l:#f3f0ff;   --lav-m:#d8cffe;
+      --rose:#f76b8a;  --rose-l:#fff0f3;  --rose-m:#ffc8d0;
+      --shadow-l:0 8px 32px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.06);
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    html,body{height:100%;font-family:'Nunito',sans-serif;background:var(--bg);color:var(--ink);}
+    body{display:flex;align-items:center;justify-content:center;padding:20px;min-height:100vh;}
+
+    .card{
+      background:var(--white);border:1.5px solid var(--border);
+      border-radius:28px;padding:44px 40px;width:100%;max-width:420px;
+      box-shadow:var(--shadow-l);
+      animation:cardIn .3s cubic-bezier(.34,1.56,.64,1) both;
+    }
+    @keyframes cardIn{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+
+    .logo{display:flex;align-items:center;gap:12px;margin-bottom:32px;justify-content:center;}
+    .logo-icon{
+      width:48px;height:48px;border-radius:16px;
+      background:linear-gradient(135deg,var(--peach),var(--lav));
+      display:flex;align-items:center;justify-content:center;
+      font-size:1.4rem;box-shadow:0 4px 14px rgba(155,127,244,.35);
+    }
+    .logo-text{display:flex;flex-direction:column;}
+    .logo-name{font-size:1.3rem;font-weight:900;letter-spacing:-.03em;}
+    .logo-sub{font-size:.6rem;color:var(--ink3);font-family:'Fira Code',monospace;margin-top:2px;}
+
+    .heading{text-align:center;margin-bottom:28px;}
+    .heading h1{font-size:1.4rem;font-weight:900;letter-spacing:-.03em;margin-bottom:5px;}
+    .heading p{font-size:.82rem;color:var(--ink3);font-weight:500;}
+
+    .tabs{display:flex;background:var(--bg);border:1.5px solid var(--border);border-radius:50px;padding:3px;margin-bottom:28px;}
+    .tab{flex:1;padding:8px;border-radius:50px;font-size:.8rem;font-weight:800;cursor:pointer;text-align:center;transition:all .18s;border:none;background:transparent;color:var(--ink3);}
+    .tab.active{background:var(--white);color:var(--lav);box-shadow:0 2px 8px rgba(0,0,0,.08);}
+
+    .field{margin-bottom:16px;}
+    .field-label{display:block;font-size:.68rem;font-weight:800;color:var(--ink2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px;}
+    .field-input{
+      width:100%;padding:12px 14px;
+      background:var(--bg);border:1.5px solid var(--border);
+      border-radius:11px;color:var(--ink);
+      font-family:'Nunito',sans-serif;font-size:.88rem;font-weight:600;
+      outline:none;transition:border-color .18s,box-shadow .18s;
+    }
+    .field-input:focus{border-color:var(--lav);box-shadow:0 0 0 3px var(--lav-l);}
+    .field-input::placeholder{color:var(--ink4);font-weight:500;}
+
+    .btn{
+      width:100%;padding:13px;margin-top:4px;
+      background:linear-gradient(135deg,var(--peach),var(--lav));
+      border:none;border-radius:11px;
+      color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:.9rem;
+      cursor:pointer;box-shadow:0 3px 12px rgba(155,127,244,.3);
+      transition:all .18s;
+    }
+    .btn:hover{transform:translateY(-1px);box-shadow:0 5px 18px rgba(155,127,244,.4);}
+    .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+
+    .msg{
+      padding:10px 14px;border-radius:10px;font-size:.8rem;font-weight:600;
+      margin-bottom:14px;display:none;
+    }
+    .msg.error{background:var(--rose-l);color:var(--rose);border:1.5px solid var(--rose-m);}
+    .msg.success{background:var(--mint-l);color:#166534;border:1.5px solid var(--mint-m);}
+    .msg.show{display:block;}
+
+    .footer-note{text-align:center;font-size:.72rem;color:var(--ink3);margin-top:20px;font-weight:500;}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">🎙️</div>
+    <div class="logo-text">
+      <div class="logo-name">indoo</div>
+      <div class="logo-sub">multi-agent dashboard</div>
+    </div>
+  </div>
+
+  <div class="heading">
+    <h1>Welcome back 👋</h1>
+    <p>Sign in to access your agent analytics</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" id="tabSignin" onclick="switchTab('signin')">Sign In</button>
+    <button class="tab" id="tabSignup" onclick="switchTab('signup')">Sign Up</button>
+  </div>
+
+  <div class="msg" id="msg"></div>
+
+  <div id="formSignin">
+    <div class="field">
+      <label class="field-label">Email</label>
+      <input class="field-input" type="email" id="si-email" placeholder="you@company.com"/>
+    </div>
+    <div class="field">
+      <label class="field-label">Password</label>
+      <input class="field-input" type="password" id="si-pass" placeholder="••••••••"/>
+    </div>
+    <button class="btn" id="btnSignin" onclick="signIn()">Sign In →</button>
+  </div>
+
+  <div id="formSignup" style="display:none">
+    <div class="field">
+      <label class="field-label">Full Name</label>
+      <input class="field-input" type="text" id="su-name" placeholder="Your name"/>
+    </div>
+    <div class="field">
+      <label class="field-label">Email</label>
+      <input class="field-input" type="email" id="su-email" placeholder="you@company.com"/>
+    </div>
+    <div class="field">
+      <label class="field-label">Password</label>
+      <input class="field-input" type="password" id="su-pass" placeholder="Min. 8 characters"/>
+    </div>
+    <button class="btn" id="btnSignup" onclick="signUp()">Create Account →</button>
+  </div>
+
+  <div class="footer-note">Your data is secured via Supabase Auth 🔒</div>
+</div>
+
+<script>
+// ── CONFIG — replace with your Supabase project values ──────────────────────
+const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
+// ────────────────────────────────────────────────────────────────────────────
+
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Redirect if already logged in
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (session) window.location.href = 'index.html';
+});
+
+function switchTab(t) {
+  document.getElementById('tabSignin').classList.toggle('active', t === 'signin');
+  document.getElementById('tabSignup').classList.toggle('active', t === 'signup');
+  document.getElementById('formSignin').style.display = t === 'signin' ? 'block' : 'none';
+  document.getElementById('formSignup').style.display = t === 'signup' ? 'block' : 'none';
+  hideMsg();
+}
+
+function showMsg(text, type = 'error') {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = `msg ${type} show`;
+}
+function hideMsg() {
+  document.getElementById('msg').className = 'msg';
+}
+
+async function signIn() {
+  const email = document.getElementById('si-email').value.trim();
+  const pass  = document.getElementById('si-pass').value;
+  if (!email || !pass) { showMsg('Please fill in all fields'); return; }
+  const btn = document.getElementById('btnSignin');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) {
+    showMsg(error.message); btn.disabled = false; btn.textContent = 'Sign In →';
+  } else {
+    window.location.href = 'index.html';
+  }
+}
+
+async function signUp() {
+  const name  = document.getElementById('su-name').value.trim();
+  const email = document.getElementById('su-email').value.trim();
+  const pass  = document.getElementById('su-pass').value;
+  if (!name || !email || !pass) { showMsg('Please fill in all fields'); return; }
+  if (pass.length < 8) { showMsg('Password must be at least 8 characters'); return; }
+  const btn = document.getElementById('btnSignup');
+  btn.disabled = true; btn.textContent = 'Creating account…';
+  const { data, error } = await sb.auth.signUp({
+    email, password: pass,
+    options: { data: { full_name: name } }
+  });
+  if (error) {
+    showMsg(error.message); btn.disabled = false; btn.textContent = 'Create Account →';
+  } else {
+    showMsg('Account created! Check your email to confirm, then sign in.', 'success');
+    btn.disabled = false; btn.textContent = 'Create Account →';
+    switchTab('signin');
+  }
+}
+
+// Enter key support
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const signinVisible = document.getElementById('formSignin').style.display !== 'none';
+  if (signinVisible) signIn(); else signUp();
+});
+</script>
+</body>
+</html>

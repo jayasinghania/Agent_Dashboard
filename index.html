@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Indoo — My Agents</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="index.css"/>
+  <style>
+    .sp-cost   { background:#fff7ed; color:#c2540a; border:1.5px solid #fed7aa; }
+    .sp-tokens { background:#f0fdf4; color:#166534; border:1.5px solid #bbf7d0; }
+    .user-chip{display:flex;align-items:center;gap:7px;padding:5px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:50px;}
+    .user-av{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--peach-m),var(--lav-m));display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;color:var(--lav);}
+    .user-name{font-size:.75rem;font-weight:700;color:var(--ink2);}
+    .user-role{font-size:.6rem;font-weight:800;padding:2px 8px;border-radius:50px;border:1.5px solid;}
+    .role-admin{background:var(--lav-l);color:var(--lav);border-color:var(--lav-m);}
+    .role-client{background:var(--sky-l);color:#0369a1;border-color:var(--sky-m);}
+    .btn-logout{padding:7px 16px;border-radius:50px;font-size:.78rem;font-weight:700;color:var(--rose);border:1.5px solid var(--rose-m);background:var(--rose-l);cursor:pointer;transition:all .15s;}
+    .btn-logout:hover{background:var(--rose);color:#fff;}
+    .admin-link{padding:7px 16px;border-radius:50px;font-size:.78rem;font-weight:700;color:var(--lav);border:1.5px solid var(--lav-m);background:var(--lav-l);cursor:pointer;text-decoration:none;transition:all .15s;}
+    .admin-link:hover{background:var(--lav);color:#fff;}
+    .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:16px;}
+    .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--lav);border-radius:50%;animation:spin .65s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loading-text{font-size:.85rem;font-weight:600;color:var(--ink3);}
+    .client-notice{background:var(--sky-l);border:1.5px solid var(--sky-m);border-radius:14px;padding:14px 20px;margin-bottom:28px;display:flex;align-items:center;gap:12px;font-size:.82rem;font-weight:600;color:#0369a1;}
+  </style>
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="logo">
+    <div class="logo-icon">🎙️</div>
+    <div class="logo-text">
+      <div class="logo-name">indoo</div>
+      <div class="logo-sub">multi-agent dashboard</div>
+    </div>
+  </div>
+  <div class="topbar-right" id="topbarRight"></div>
+</nav>
+
+<div class="body">
+  <div id="mainContent">
+    <div class="loading-screen">
+      <div class="spinner"></div>
+      <div class="loading-text">Loading your agents…</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-title" id="modalTitle">✨ Add New Agent</div>
+      <button class="modal-x" onclick="closeModal()">✕</button>
+    </div>
+    <div class="field">
+      <label class="field-label">Agent Name</label>
+      <input class="field-input" type="text" id="f-name" placeholder="e.g. Indoo HR Bot, Sales Agent…"/>
+    </div>
+    <div class="field">
+      <label class="field-label">Agent ID</label>
+      <input class="field-input mono" type="text" id="f-id" placeholder="agent_xxxxxxxxxxxxxxxx"/>
+    </div>
+    <div class="field">
+      <label class="field-label">API Key</label>
+      <input class="field-input mono" type="password" id="f-key" placeholder="sk-…"/>
+    </div>
+    <div class="divider"></div>
+    <div class="field">
+      <label class="field-label">Icon</label>
+      <div class="emoji-row" id="emojiRow">
+        <div class="emoji-opt sel" data-e="🤖">🤖</div>
+        <div class="emoji-opt" data-e="🎙️">🎙️</div>
+        <div class="emoji-opt" data-e="💬">💬</div>
+        <div class="emoji-opt" data-e="🧠">🧠</div>
+        <div class="emoji-opt" data-e="⚙️">⚙️</div>
+        <div class="emoji-opt" data-e="🏭">🏭</div>
+        <div class="emoji-opt" data-e="📋">📋</div>
+        <div class="emoji-opt" data-e="🌐">🌐</div>
+        <div class="emoji-opt" data-e="🔬">🔬</div>
+        <div class="emoji-opt" data-e="📞">📞</div>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Card Colour</label>
+      <div class="color-row">
+        <div class="color-opt sel" data-c="lav"></div>
+        <div class="color-opt" data-c="peach"></div>
+        <div class="color-opt" data-c="mint"></div>
+        <div class="color-opt" data-c="sky"></div>
+        <div class="color-opt" data-c="rose"></div>
+        <div class="color-opt" data-c="amber"></div>
+      </div>
+    </div>
+    <div class="modal-err" id="modalErr"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-submit" id="btnSubmit" onclick="saveAgent()">Add Agent ✨</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
+
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const esc = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+const initials = n => { if (!n) return '?'; const p=n.trim().split(' '); return p.length>=2?(p[0][0]+p[p.length-1][0]).toUpperCase():n.slice(0,2).toUpperCase(); };
+
+let currentUser=null, agents=[], editId=null, selEmoji='🤖', selColor='lav';
+
+document.querySelectorAll('.emoji-opt').forEach(el=>{el.onclick=()=>{document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');selEmoji=el.dataset.e;};});
+document.querySelectorAll('.color-opt').forEach(el=>{el.onclick=()=>{document.querySelectorAll('.color-opt').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');selColor=el.dataset.c;};});
+
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { window.location.href = 'login.html'; return; }
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+  if (!profile) { window.location.href = 'login.html'; return; }
+  currentUser = { ...session.user, ...profile };
+  renderTopbar();
+  await loadAgents();
+}
+
+function renderTopbar() {
+  const isAdmin = currentUser.role === 'admin';
+  document.getElementById('topbarRight').innerHTML = `
+    ${isAdmin?`<button class="add-btn" onclick="openModal()">＋ Add Agent</button>`:''}
+    ${isAdmin?`<a class="admin-link" href="admin.html">🛡️ Admin Panel</a>`:''}
+    <div class="user-chip">
+      <div class="user-av">${esc(initials(currentUser.full_name||currentUser.email))}</div>
+      <div class="user-name">${esc(currentUser.full_name||currentUser.email)}</div>
+      <span class="user-role role-${currentUser.role}">${currentUser.role==='admin'?'🛡️ Admin':'👤 Client'}</span>
+    </div>
+    <button class="btn-logout" onclick="logout()">Sign Out</button>`;
+}
+
+async function loadAgents() {
+  if (currentUser.role === 'admin') {
+    const { data } = await sb.from('agents').select('*').order('created_at');
+    agents = data || [];
+  } else {
+    const { data } = await sb.from('agent_access').select('agents(*)').eq('user_id', currentUser.id);
+    agents = (data||[]).map(r=>r.agents).filter(Boolean);
+  }
+  renderMain();
+}
+
+function renderMain() {
+  const isAdmin = currentUser.role === 'admin';
+  const main = document.getElementById('mainContent');
+  let html = `
+    <div class="section-head">
+      <div>
+        <div class="section-title">Your <span>Agents</span></div>
+        <div class="section-sub">${isAdmin?'Click any card to open its full analytics & chat dashboard':'Agents assigned to you — click any card to open its dashboard'}</div>
+      </div>
+      <div class="count-pill">${agents.length} agent${agents.length!==1?'s':''}</div>
+    </div>
+    ${!isAdmin?`<div class="client-notice"><span style="font-size:1.1rem;">ℹ️</span> You're viewing as a <strong>Client</strong>. Contact your admin to get access to more agents.</div>`:''}
+    <div class="grid" id="grid">`;
+
+  if (!agents.length) {
+    html += `<div class="empty"><div class="empty-icon">${isAdmin?'🤖':'🔒'}</div><div class="empty-title">${isAdmin?'No agents yet!':'No agents assigned'}</div><div class="empty-sub">${isAdmin?'Click "Add Agent" in the top right to connect your first ElevenLabs Conversational AI agent.':'Ask your admin to assign agents to your account.'}</div></div>`;
+  } else {
+    agents.forEach((ag,i) => {
+      html += `
+        <div class="agent-card" data-color="${ag.color||'lav'}" style="animation-delay:${i*55}ms" onclick="openDashboard('${ag.id}')">
+          <div class="card-top">
+            <div class="card-avatar" data-color="${ag.color||'lav'}">${ag.emoji||'🤖'}</div>
+            ${isAdmin?`<div class="menu-wrap"><button class="menu-btn" onclick="toggleMenu(event,'dd-${ag.id}')">⋯</button><div class="dropdown" id="dd-${ag.id}"><div class="dd-item" onclick="event.stopPropagation();openEdit('${ag.id}')">✏️ Edit</div><div class="dd-item danger" onclick="event.stopPropagation();removeAgent('${ag.id}')">🗑 Remove</div></div></div>`:''}
+          </div>
+          <div class="card-name">${esc(ag.name)}</div>
+          <div class="card-id">${esc(ag.agent_id||'No agent ID')}</div>
+          <div class="card-stats" id="stats-${ag.id}"><span class="stat-pill sp-loading">Loading stats…</span></div>
+          <div class="card-footer">
+            <div class="card-date">Added ${fmtRelDate(ag.created_at)}</div>
+            <button class="open-btn" onclick="event.stopPropagation();openDashboard('${ag.id}')">Open →</button>
+          </div>
+        </div>`;
+    });
+    if (isAdmin) html += `<div class="add-card" onclick="openModal()"><div class="add-card-icon">＋</div><div class="add-card-label">Add New Agent</div><div class="add-card-sub">Connect an ElevenLabs<br/>Conversational AI agent</div></div>`;
+  }
+  html += `</div>`;
+  main.innerHTML = html;
+  agents.forEach(ag => fetchStats(ag));
+}
+
+function fmtRelDate(ts) {
+  if (!ts) return 'recently';
+  const d=Math.floor((Date.now()-new Date(ts).getTime())/86400000);
+  if (d===0) return 'today'; if (d===1) return 'yesterday'; if (d<7) return `${d} days ago`;
+  return new Date(ts).toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+}
+
+async function fetchStats(ag) {
+  const el=document.getElementById(`stats-${ag.id}`);
+  if (!el||!ag.api_key){if(el)el.innerHTML=`<span class="stat-pill sp-loading">No API key</span>`;return;}
+  try {
+    let url=`https://api.elevenlabs.io/v1/convai/conversations?page_size=100${ag.agent_id?`&agent_id=${encodeURIComponent(ag.agent_id)}`:''}`;
+    const res=await fetch(url,{headers:{'xi-api-key':ag.api_key}});
+    if (!res.ok) throw new Error();
+    const {conversations:convs=[]}=await res.json();
+    if (!convs.length){el.innerHTML=`<span class="stat-pill sp-sessions">💬 0 sessions</span>`;return;}
+    const details=await Promise.all(convs.slice(0,5).map(async c=>{try{const r=await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${c.conversation_id}`,{headers:{'xi-api-key':ag.api_key}});return r.ok?await r.json():null;}catch{return null;}}));
+    const toks=details.filter(Boolean).map(d=>getTokens(d)).filter(Boolean);
+    const costs=toks.map(t=>calcTokenCost(t)).filter(v=>v!==null);
+    const avgC=costs.length?costs.reduce((a,b)=>a+b,0)/costs.length:null;
+    const costPill=avgC!==null?`<span class="stat-pill sp-cost">💰 ~${(avgC*convs.length)<0.01?'<$0.01':'$'+(avgC*convs.length).toFixed(2)} est.</span>`:'';
+    const tokPill=toks.length?`<span class="stat-pill sp-tokens">🔢 ~${Math.round(toks.reduce((a,t)=>a+t.total,0)/toks.length).toLocaleString()} tok/sess</span>`:'';
+    el.innerHTML=`<span class="stat-pill sp-sessions">💬 ${convs.length} sessions</span>${tokPill}${costPill}`;
+  } catch{el.innerHTML=`<span class="stat-pill sp-loading">Could not fetch</span>`;}
+}
+
+function getTokens(det){if(!det)return null;const m=det.metadata||{};const i=m.input_tokens??m.llm_usage?.input_tokens??null;const o=m.output_tokens??m.llm_usage?.output_tokens??null;const c=m.total_tokens??m.llm_usage?.total_tokens??null;if(i===null&&o===null&&c===null)return null;const ii=i!==null?Number(i):(c!==null?Math.round(Number(c)*.6):0);const oo=o!==null?Number(o):(c!==null?Math.round(Number(c)*.4):0);return{input:ii,output:oo,total:ii+oo,model:m.llm_model||m.model||'unknown'};}
+const MP={'gpt-4o':{in:2.5,out:10},'gpt-4o-mini':{in:.15,out:.6},'claude-3-5-sonnet':{in:3,out:15},'gemini-2.0-flash':{in:.1,out:.4},'default':{in:2.5,out:10}};
+function lp(m){if(!m)return MP.default;const ml=m.toLowerCase();if(MP[ml])return MP[ml];for(const k of Object.keys(MP)){if(k!=='default'&&ml.includes(k))return MP[k];}return MP.default;}
+function calcTokenCost(t){if(!t)return null;const p=lp(t.model);return(t.input/1e6)*p.in+(t.output/1e6)*p.out;}
+
+function toggleMenu(e,id){e.stopPropagation();document.querySelectorAll('.dropdown').forEach(d=>{if(d.id!==id)d.classList.remove('open');});document.getElementById(id)?.classList.toggle('open');}
+document.addEventListener('click',()=>document.querySelectorAll('.dropdown').forEach(d=>d.classList.remove('open')));
+
+function openModal(){editId=null;selEmoji='🤖';selColor='lav';['f-name','f-id','f-key'].forEach(id=>document.getElementById(id).value='');document.getElementById('modalErr').style.display='none';document.getElementById('modalTitle').textContent='✨ Add New Agent';document.getElementById('btnSubmit').textContent='Add Agent ✨';document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.toggle('sel',e.dataset.e==='🤖'));document.querySelectorAll('.color-opt').forEach(e=>e.classList.toggle('sel',e.dataset.c==='lav'));document.getElementById('overlay').classList.add('open');setTimeout(()=>document.getElementById('f-name').focus(),100);}
+function openEdit(id){const ag=agents.find(a=>a.id===id);if(!ag)return;editId=id;selEmoji=ag.emoji||'🤖';selColor=ag.color||'lav';document.getElementById('f-name').value=ag.name||'';document.getElementById('f-id').value=ag.agent_id||'';document.getElementById('f-key').value=ag.api_key||'';document.getElementById('modalErr').style.display='none';document.getElementById('modalTitle').textContent='✏️ Edit Agent';document.getElementById('btnSubmit').textContent='Save Changes';document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.toggle('sel',e.dataset.e===selEmoji));document.querySelectorAll('.color-opt').forEach(e=>e.classList.toggle('sel',e.dataset.c===selColor));document.getElementById('overlay').classList.add('open');}
+function closeModal(){document.getElementById('overlay').classList.remove('open');}
+
+async function saveAgent(){
+  const name=document.getElementById('f-name').value.trim();
+  const agentId=document.getElementById('f-id').value.trim();
+  const apiKey=document.getElementById('f-key').value.trim();
+  if(!name){showErr('Please enter a name 🙏');return;}
+  const btn=document.getElementById('btnSubmit');btn.disabled=true;btn.textContent='Saving…';
+  if(editId){
+    const{error}=await sb.from('agents').update({name,agent_id:agentId,api_key:apiKey,emoji:selEmoji,color:selColor}).eq('id',editId);
+    if(error){showErr(error.message);btn.disabled=false;btn.textContent='Save Changes';return;}
+  } else {
+    const{error}=await sb.from('agents').insert({name,agent_id:agentId,api_key:apiKey,emoji:selEmoji,color:selColor,created_by:currentUser.id});
+    if(error){showErr(error.message);btn.disabled=false;btn.textContent='Add Agent ✨';return;}
+  }
+  closeModal();await loadAgents();
+}
+function showErr(msg){const el=document.getElementById('modalErr');el.textContent=msg;el.style.display='block';}
+async function removeAgent(id){if(!confirm('Remove this agent?'))return;await sb.from('agent_access').delete().eq('agent_id',id);await sb.from('agents').delete().eq('id',id);await loadAgents();}
+function openDashboard(id){const ag=agents.find(a=>a.id===id);if(!ag)return;if(!ag.api_key){alert('No API key for this agent.');return;}const p=new URLSearchParams({name:ag.name,agentId:ag.agent_id||'',apiKey:ag.api_key,emoji:ag.emoji||'🤖',color:ag.color||'lav'});window.location.href=`dashboard.html?${p.toString()}`;}
+async function logout(){await sb.auth.signOut();window.location.href='login.html';}
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='Enter'&&document.getElementById('overlay').classList.contains('open'))saveAgent();});
+init();
+</script>
+</body>
+</html>
