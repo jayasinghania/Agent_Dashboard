@@ -1,8 +1,3 @@
--- ============================================================
---  Agent — Supabase Database Setup
---  Run this entire file in your Supabase SQL Editor
---  (Dashboard → SQL Editor → New Query → paste → Run)
--- ============================================================
 
 
 -- ── 1. PROFILES ─────────────────────────────────────────────
