@@ -3,11 +3,15 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Indoo — My Agents</title>
+  <title>My Agents</title>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="index.css"/>
   <style>
+    /* Hide body until auth check completes — prevents flash/blink */
+    body { visibility: hidden; }
+    body.ready { visibility: visible; }
+
     .sp-cost   { background:#fff7ed; color:#c2540a; border:1.5px solid #fed7aa; }
     .sp-tokens { background:#f0fdf4; color:#166534; border:1.5px solid #bbf7d0; }
     .user-chip{display:flex;align-items:center;gap:7px;padding:5px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:50px;}
@@ -119,11 +123,44 @@ document.querySelectorAll('.emoji-opt').forEach(el=>{el.onclick=()=>{document.qu
 document.querySelectorAll('.color-opt').forEach(el=>{el.onclick=()=>{document.querySelectorAll('.color-opt').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');selColor=el.dataset.c;};});
 
 async function init() {
+  // Get session — if none, redirect immediately
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { window.location.href = 'login.html'; return; }
-  const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
-  if (!profile) { window.location.href = 'login.html'; return; }
+
+  // Fetch profile — retry up to 5x with 600ms gap to handle
+  // the race where the DB trigger hasn't created the row yet
+  let profile = null;
+  for (let i = 0; i < 5; i++) {
+    const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+    if (data) { profile = data; break; }
+    await new Promise(r => setTimeout(r, 600));
+  }
+
+  // Profile still missing after retries — create it manually as fallback
+  if (!profile) {
+    const isFirst = (await sb.from('profiles').select('id', { count: 'exact', head: true })).count === 0;
+    await sb.from('profiles').insert({
+      id:        session.user.id,
+      email:     session.user.email,
+      full_name: session.user.user_metadata?.full_name || '',
+      role:      isFirst ? 'admin' : 'client',
+    });
+    const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+    profile = data;
+  }
+
+  if (!profile) {
+    // Still nothing — sign out and back to login
+    await sb.auth.signOut();
+    window.location.href = 'login.html';
+    return;
+  }
+
   currentUser = { ...session.user, ...profile };
+
+  // Reveal page now that we have a confirmed session
+  document.body.classList.add('ready');
+
   renderTopbar();
   await loadAgents();
 }

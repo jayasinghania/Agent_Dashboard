@@ -18,7 +18,8 @@
     }
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
     html,body{height:100%;font-family:'Nunito',sans-serif;background:var(--bg);color:var(--ink);}
-    body{display:flex;align-items:center;justify-content:center;padding:20px;min-height:100vh;}
+    body{display:flex;align-items:center;justify-content:center;padding:20px;min-height:100vh;visibility:hidden;}
+    body.ready{visibility:visible;}
 
     .card{
       background:var(--white);border:1.5px solid var(--border);
@@ -143,9 +144,13 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Redirect if already logged in
+// Redirect if already logged in, else show page
 sb.auth.getSession().then(({ data: { session } }) => {
-  if (session) window.location.href = 'index.html';
+  if (session) {
+    window.location.href = 'index.html';
+  } else {
+    document.body.classList.add('ready');
+  }
 });
 
 function switchTab(t) {

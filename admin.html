@@ -21,7 +21,8 @@
       --shadow-l:0 8px 32px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);
     }
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-    html,body{height:100%;font-family:'Nunito',sans-serif;background:var(--bg);color:var(--ink);}
+    html,body{height:100%;font-family:'Nunito',sans-serif;background:var(--bg);color:var(--ink);visibility:hidden;}
+    body.ready{visibility:visible;}
 
     /* TOPBAR */
     .topbar{
@@ -305,7 +306,6 @@ async function init() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { window.location.href = 'login.html'; return; }
 
-  // Check admin role
   const { data: profile } = await sb.from('profiles').select('role,full_name,email').eq('id', session.user.id).single();
   if (!profile || profile.role !== 'admin') {
     alert('Access denied. Admin only.');
@@ -315,6 +315,9 @@ async function init() {
   currentUser = { ...session.user, ...profile };
   document.getElementById('userAv').textContent   = initials(profile.full_name || profile.email);
   document.getElementById('userName').textContent = profile.full_name || profile.email;
+
+  // Reveal page now that auth is confirmed
+  document.body.classList.add('ready');
 
   await loadAll();
 }
