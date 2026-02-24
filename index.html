@@ -8,7 +8,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="index.css"/>
   <style>
-    /* Hide body until auth check completes — prevents flash/blink */
     body { visibility: hidden; }
     body.ready { visibility: visible; }
 
@@ -123,7 +122,6 @@ document.querySelectorAll('.emoji-opt').forEach(el=>{el.onclick=()=>{document.qu
 document.querySelectorAll('.color-opt').forEach(el=>{el.onclick=()=>{document.querySelectorAll('.color-opt').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');selColor=el.dataset.c;};});
 
 async function init() {
-  // Get session — if none, redirect immediately
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { window.location.href = 'login.html'; return; }
 
