@@ -1,5 +1,5 @@
 {
-  "name": "Agent analytics-backend",
+  "name": "Agent-analytics-backend",
   "version": "1.0.0",
   "description": "Backend API server for agent analytics dashboard",
   "main": "src/index.js",

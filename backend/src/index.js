@@ -35,7 +35,7 @@ if (missing.length) {
 
 // ── App setup ─────────────────────────────────────────────────
 const app  = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT;
 
 // Trust proxy headers (needed when deployed behind Vercel/Railway/Render)
 app.set('trust proxy', 1);
