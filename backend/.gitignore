@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────
+#  .gitignore — Indoo Agent Analytics
+# ─────────────────────────────────────────────────────────────
+
+
+# ── SECRETS (never commit these) ─────────────────────────────
+.env
+.env.local
+.env.production
+.env.*
+!.env.example          # keep the example template
+
+
+# ── NODE ─────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+package-lock.json      # optional — remove this line if you want to commit it
+
+
+# ── LOGS ─────────────────────────────────────────────────────
+logs/
+*.log
+
+
+# ── OS FILES ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ── EDITORS ──────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+
+# ── MISC ─────────────────────────────────────────────────────
+dist/
+build/
+.cache/

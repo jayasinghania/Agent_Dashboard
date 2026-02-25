@@ -3,65 +3,60 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Indoo — Dashboard</title>
+  <title>Agent Analytics — Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="dashboard.css" />
   <style>
-    /* ══════════════════════════════════════════════════════════════
-       TABLE VISIBILITY FIXES
-       Root causes identified from dashboard.css:
-       1. .table-card has overflow:hidden + slideUp animation with
-          fill-mode:both — if animation doesn't complete the whole
-          card stays at opacity:0
-       2. .t-scroll has max-height:340px which may clip rows
-       3. tbody tr had slide-up class causing rows to start invisible
-    ══════════════════════════════════════════════════════════════ */
+    .table-card { opacity:1!important;transform:none!important;animation:none!important;overflow:visible!important; }
+    .t-scroll { overflow-x:auto!important;overflow-y:auto!important;max-height:600px!important;height:auto!important; }
+    #tBody tr { opacity:1!important;transform:none!important;animation:none!important;visibility:visible!important; }
+    #tBody td { opacity:1!important;visibility:visible!important; }
+    .table-card { border-radius:18px;outline:1.5px solid var(--border);border:none!important; }
+    .t-scroll th,.t-scroll td { white-space:nowrap;padding:9px 12px!important;font-size:.76rem; }
+    .t-scroll th:nth-child(1),.t-scroll td:nth-child(1){min-width:140px;}
+    .t-scroll th:nth-child(2),.t-scroll td:nth-child(2){min-width:148px;}
+    .t-scroll th:nth-child(3),.t-scroll td:nth-child(3){min-width:68px;}
+    .t-scroll th:nth-child(4),.t-scroll td:nth-child(4){min-width:60px;}
+    .t-scroll th:nth-child(5),.t-scroll td:nth-child(5){min-width:115px;}
+    .t-scroll th:nth-child(6),.t-scroll td:nth-child(6){min-width:85px;}
+    .t-scroll th:nth-child(7),.t-scroll td:nth-child(7){min-width:78px;}
+    .tok-cell{font-size:.76rem;font-weight:700;color:var(--ink2);cursor:default;}
+    .tok-sep{color:var(--ink4);margin:0 3px;font-weight:400;}
+    #sv3sub{font-size:.66rem;line-height:1.5;}
+    #sv5sub{font-size:.66rem;line-height:1.5;}
+    .sp-cost{background:#fff7ed;color:#c2540a;border:1.5px solid #fed7aa;}
+    .sp-tokens{background:#f0fdf4;color:#166534;border:1.5px solid #bbf7d0;}
 
-    /* Force the table card to always be fully visible */
-    .table-card {
-      opacity: 1 !important;
-      transform: none !important;
-      animation: none !important;
-      overflow: visible !important;   /* was overflow:hidden — was clipping content */
+    /* Sync button in topbar */
+    .sync-btn{
+      display:flex;align-items:center;gap:6px;padding:7px 16px;
+      background:var(--mint-l);border:1.5px solid var(--mint-m);
+      border-radius:50px;font-family:'Nunito',sans-serif;
+      font-size:.78rem;font-weight:700;color:var(--mint);cursor:pointer;transition:all .15s;
     }
+    .sync-btn:hover{background:var(--mint);color:#fff;}
+    .sync-btn:disabled{opacity:.5;cursor:not-allowed;}
+    .sync-btn.syncing{animation:syncPulse 1s ease-in-out infinite;}
+    @keyframes syncPulse{0%,100%{opacity:1}50%{opacity:.5}}
 
-    /* Let the scroll container grow naturally, cap it generously */
-    .t-scroll {
-      overflow-x: auto !important;
-      overflow-y: auto !important;
-      max-height: 600px !important;   /* was 340px — increase so rows show */
-      height: auto !important;
+    /* Sync status badge */
+    .sync-status{
+      font-size:.65rem;font-weight:700;color:var(--ink3);
+      display:flex;align-items:center;gap:5px;
     }
+    .sync-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);}
+    .sync-dot.stale{background:var(--amber);}
+    .sync-dot.never{background:var(--rose);}
 
-    /* Guarantee every row and cell is visible */
-    #tBody tr { opacity: 1 !important; transform: none !important; animation: none !important; visibility: visible !important; }
-    #tBody td { opacity: 1 !important; visibility: visible !important; }
-
-    /* Keep rounded corners without clipping via outline trick */
-    .table-card { border-radius: 18px; outline: 1.5px solid var(--border); border: none !important; }
-
-    /* Tighten columns so the 7-column table fits without horizontal scroll on most screens */
-    .t-scroll th, .t-scroll td { white-space: nowrap; padding: 9px 12px !important; font-size: .76rem; }
-    .t-scroll th:nth-child(1), .t-scroll td:nth-child(1) { min-width: 140px; }
-    .t-scroll th:nth-child(2), .t-scroll td:nth-child(2) { min-width: 148px; }
-    .t-scroll th:nth-child(3), .t-scroll td:nth-child(3) { min-width:  68px; }
-    .t-scroll th:nth-child(4), .t-scroll td:nth-child(4) { min-width:  60px; }
-    .t-scroll th:nth-child(5), .t-scroll td:nth-child(5) { min-width: 115px; }
-    .t-scroll th:nth-child(6), .t-scroll td:nth-child(6) { min-width:  85px; }
-    .t-scroll th:nth-child(7), .t-scroll td:nth-child(7) { min-width:  78px; }
-
-    /* Token cell */
-    .tok-cell { font-size:.76rem; font-weight:700; color:var(--ink2); cursor:default; }
-    .tok-sep  { color:var(--ink4); margin:0 3px; font-weight:400; }
-    /* Token chip in transcript */
-    .tok-chip { background:linear-gradient(135deg,#e8f4fd,#d4eaf7); color:#2d7fc1; border:1.5px solid #b8d9f0; font-weight:700; cursor:default; }
-    /* Stat card sub labels */
-    #sv3sub { font-size:.66rem; line-height:1.5; }
-    #sv5sub { font-size:.66rem; line-height:1.5; }
-    /* Index pill colours */
-    .sp-cost   { background:#fff7ed; color:#c2540a; border:1.5px solid #fed7aa; }
-    .sp-tokens { background:#f0fdf4; color:#166534; border:1.5px solid #bbf7d0; }
+    /* Backend offline notice */
+    .backend-notice{
+      background:var(--amber-l);border:1.5px solid var(--amber-m);
+      border-radius:12px;padding:12px 16px;margin:16px 0;
+      font-size:.8rem;font-weight:600;color:#92400e;
+      display:flex;align-items:center;gap:10px;
+    }
   </style>
 </head>
 <body>
@@ -75,7 +70,15 @@
     <div class="agent-id"   id="agentIdEl">—</div>
   </div>
   <div style="flex:1"></div>
-  <div class="tab-bar">
+  <!-- Sync button — only shown to admins -->
+  <div id="syncWrap" style="display:none;align-items:center;gap:10px;">
+    <div class="sync-status" id="syncStatus">
+      <div class="sync-dot never" id="syncDot"></div>
+      <span id="syncLabel">Never synced</span>
+    </div>
+    <button class="sync-btn" id="syncBtn" onclick="triggerSync()">🔄 Sync Now</button>
+  </div>
+  <div class="tab-bar" style="margin-left:12px;">
     <button class="tab-btn active" id="tabOv" onclick="switchTab('ov')">📊 Overview</button>
     <button class="tab-btn"        id="tabCh" onclick="switchTab('ch')">💬 Chat History</button>
   </div>
@@ -84,8 +87,6 @@
 
 <!-- ══ OVERVIEW ══ -->
 <div id="overviewScreen" class="screen active">
-
-  <!-- Stats -->
   <div class="stats-row" id="statsRow">
     <div class="stat-card" style="animation-delay:0ms">
       <div class="sc-label">Number of Calls</div>
@@ -119,7 +120,6 @@
     </div>
   </div>
 
-  <!-- Chart -->
   <div class="chart-card">
     <div class="card-head">
       <div>
@@ -133,19 +133,12 @@
     </div>
     <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
   </div>
-
-
-
 </div>
 
 <!-- ══ CHAT ══ -->
 <div id="chatScreen" class="screen">
-
-  <!-- LEFT: Users sidebar -->
   <aside class="sidebar">
-    <div class="sidebar-header">
-      <div class="sidebar-title">👥 Users</div>
-    </div>
+    <div class="sidebar-header"><div class="sidebar-title">👥 Users</div></div>
     <div class="search-box">
       <div class="search-wrap">
         <span class="search-ico">🔍</span>
@@ -157,9 +150,7 @@
     </div>
   </aside>
 
-  <!-- MIDDLE: Sessions timeline + transcript -->
   <div class="chat-middle">
-    <!-- session list -->
     <div class="timeline">
       <div class="tl-top">
         <div class="tl-lbl">📅 Sessions</div>
@@ -175,35 +166,39 @@
       </div>
     </div>
 
-    <!-- transcript -->
     <div class="tr-panel" id="trPanel">
       <div class="hint"><div class="hint-icon">💬</div><p>Select a session to read the full transcript ✨</p></div>
     </div>
   </div>
 
-  <!-- RIGHT: Conversation info panel -->
   <aside class="info-panel" id="infoPanel">
-    <div class="ip-header">
-      <div class="ip-title">ℹ️ Conversation Info</div>
-    </div>
+    <div class="ip-header"><div class="ip-title">ℹ️ Conversation Info</div></div>
     <div class="ip-body" id="ipBody">
-      <div class="ip-empty">
-        <div class="ip-empty-icon">📋</div>
-        <div class="ip-empty-text">Select a session to see details</div>
-      </div>
+      <div class="ip-empty"><div class="ip-empty-icon">📋</div><div class="ip-empty-text">Select a session to see details</div></div>
     </div>
   </aside>
-
 </div>
 
 <script>
-// ── URL PARAMS ──────────────────────────────────────────
+// ── CONFIG ────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
+
+// Change to your deployed backend URL in production
+const BACKEND_URL = 'http://localhost:3001';
+const API_SECRET  = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e'; 
+// ─────────────────────────────────────────────────────────────
+
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── URL PARAMS ────────────────────────────────────────────────
 const P          = new URLSearchParams(location.search);
-const agentName  = P.get('name')    || 'Agent';
-const agentIdVal = P.get('agentId') || '';
-const apiKey     = P.get('apiKey')  || '';
-const agentEmoji = P.get('emoji')   || '🤖';
-const agentColor = P.get('color')   || 'lav';
+const agentDbId  = P.get('agentDbId') || '';  // Supabase UUID — used for backend calls
+const agentName  = P.get('name')      || 'Agent';
+const agentIdVal = P.get('agentId')   || '';
+const agentEmoji = P.get('emoji')     || '🤖';
+const agentColor = P.get('color')     || 'lav';
 
 document.title = `Indoo — ${agentName}`;
 document.getElementById('agentName').textContent = agentName;
@@ -211,16 +206,36 @@ document.getElementById('agentIdEl').textContent = agentIdVal || 'No agent ID';
 const avEl = document.getElementById('agentAv');
 avEl.textContent = agentEmoji; avEl.dataset.color = agentColor;
 
-if (!apiKey) {
-  document.getElementById('usersList').innerHTML = `<div class="ph"><div class="phi">🔑</div>No API key.<br/><a href="index.html">← Go back</a></div>`;
-}
-
-// ── STATE ──────────────────────────────────────────────
-let allConvs = [], detailCache = {}, userMap = {};
+// ── STATE ─────────────────────────────────────────────────────
+let allConvs   = [];   // array of `conversations` DB rows
+let userMap    = {};
 let activeUser = null, activeConv = null, activeDayFilter = null;
 let chartInst  = null;
+let currentUserRole = null;
 
-// ── TABS ──────────────────────────────────────────────
+// ── BACKEND HELPER ────────────────────────────────────────────
+async function backendFetch(path, options = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  const token = session?.access_token;
+
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type':  'application/json',
+      'x-api-secret':  API_SECRET,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data?.error?.message || `Backend error ${res.status}`);
+  }
+  return data;
+}
+
+// ── TABS ──────────────────────────────────────────────────────
 function switchTab(t) {
   document.getElementById('tabOv').classList.toggle('active', t==='ov');
   document.getElementById('tabCh').classList.toggle('active', t==='ch');
@@ -228,15 +243,14 @@ function switchTab(t) {
   document.getElementById('chatScreen').classList.toggle('active', t==='ch');
 }
 
-// ── UTILS ─────────────────────────────────────────────
-const esc = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
-const fmtDur  = s  => { if (!s) return '—'; if (s<60) return s+'s'; return `${Math.floor(s/60)}m ${s%60}s`; };
-const fmtTime = u  => u ? new Date(u*1000).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '—';
-const fmtDate = u  => u ? new Date(u*1000).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : '—';
-const daySort = u  => u ? new Date(u*1000).toISOString().slice(0,10) : '0000-00-00';
-const initials= n  => { if (!n||n==='Unknown User') return '?'; const p=n.trim().split(' '); return p.length>=2?(p[0][0]+p[p.length-1][0]).toUpperCase():n.slice(0,2).toUpperCase(); };
-const stClass = s  => ({done:'st-done',failed:'st-failed',processing:'st-processing'}[s]||'st-in-progress');
-const getUnix = c  => { const d=detailCache[c.conversation_id]; return d?.metadata?.start_time_unix_secs||c.metadata?.start_time_unix_secs||null; };
+// ── UTILS ─────────────────────────────────────────────────────
+const esc      = s  => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+const fmtDur   = s  => { if (!s) return '—'; if (s<60) return s+'s'; return `${Math.floor(s/60)}m ${s%60}s`; };
+const fmtTime  = u  => u ? new Date(u*1000).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '—';
+const fmtDate  = u  => u ? new Date(u*1000).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : '—';
+const daySort  = u  => u ? new Date(u*1000).toISOString().slice(0,10) : '0000-00-00';
+const initials = n  => { if (!n||n==='Unknown User') return '?'; const p=n.trim().split(' '); return p.length>=2?(p[0][0]+p[p.length-1][0]).toUpperCase():n.slice(0,2).toUpperCase(); };
+const stClass  = s  => ({done:'st-done',failed:'st-failed',processing:'st-processing'}[s]||'st-in-progress');
 
 function dayLabel(u) {
   if (!u) return 'Unknown Date';
@@ -253,404 +267,316 @@ function dayLabelShort(u) {
   return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
 }
 
-// ── TOKEN EXTRACTION ─────────────────────────────────
-// Recursively scan any object for token-like numeric fields
-function deepScanTokens(obj, depth=0) {
-  if (!obj || typeof obj !== 'object' || depth > 4) return {};
-  const found = {};
-  for (const [k, v] of Object.entries(obj)) {
-    const kl = k.toLowerCase();
-    if (typeof v === 'number' && (
-      kl.includes('token') || kl.includes('usage') || kl.includes('cost') ||
-      kl.includes('credit') || kl.includes('character') || kl.includes('llm')
-    )) {
-      found[k] = v;
-    } else if (v && typeof v === 'object' && !Array.isArray(v)) {
-      Object.assign(found, deepScanTokens(v, depth + 1));
-    }
-  }
-  return found;
-}
-
-// Returns { input, output, total, model, source } or null
-function getTokens(det) {
-  if (!det) return null;
-  const m  = det.metadata || {};
-  const lu = m.llm_usage  || m.usage || m.token_usage || m.llm || {};
-
-  // ── Try every known ElevenLabs field shape ────────────────────────────────
-  const input =
-    lu.input_tokens          ?? lu.prompt_tokens          ?? lu.input               ??
-    m.input_tokens           ?? m.prompt_tokens           ?? m.llm_input_tokens      ??
-    m.prompt_token_count     ?? m.llm_usage?.input_tokens ?? null;
-
-  const output =
-    lu.output_tokens         ?? lu.completion_tokens      ?? lu.output              ??
-    m.output_tokens          ?? m.completion_tokens       ?? m.llm_output_tokens     ??
-    m.completion_token_count ?? m.llm_usage?.output_tokens ?? null;
-
-  const combined =
-    lu.total_tokens          ?? lu.total                  ??
-    m.total_tokens           ?? m.llm_total_tokens        ?? m.token_count           ??
-    m.tokens                 ?? m.llm_usage?.total_tokens ?? null;
-
-  const model =
-    m.llm_model ?? m.model ?? m.llm_model_used ?? m.llm_name ??
-    det.agent_info?.llm ?? det.agent?.llm ?? lu.model ?? null;
-
-  if (input !== null || output !== null || combined !== null) {
-    const i = input    !== null ? Number(input)    : (combined !== null ? Math.round(Number(combined)*0.6) : 0);
-    const o = output   !== null ? Number(output)   : (combined !== null ? Math.round(Number(combined)*0.4) : 0);
-    return { input: i, output: o, total: i + o, model: model || 'unknown', source: 'tokens' };
-  }
-
-  // ── Deep scan fallback: walk the whole object looking for numeric token fields ──
-  const allFields = deepScanTokens(det);
-  console.log('[Indoo] Deep scan found numeric fields:', allFields);
-  const allKeys = Object.keys(allFields);
-
-  // Try to match input/output from scan results
-  const iKey = allKeys.find(k => /input|prompt/.test(k.toLowerCase()));
-  const oKey = allKeys.find(k => /output|completion/.test(k.toLowerCase()));
-  const tKey = allKeys.find(k => /total.*tok|tok.*total/.test(k.toLowerCase()));
-
-  if (iKey || oKey || tKey) {
-    const i = iKey ? Number(allFields[iKey]) : 0;
-    const o = oKey ? Number(allFields[oKey]) : 0;
-    const t = tKey ? Number(allFields[tKey]) : i + o;
-    return { input: i||Math.round(t*0.6), output: o||Math.round(t*0.4), total: t||i+o, model: model||'unknown', source: 'deep-scan' };
-  }
-
-  return null;  // truly no token data
-}
-
-// ── DURATION-BASED COST ESTIMATE ─────────────────────
-// When no token data exists, estimate from call duration.
-// ElevenLabs Conversational AI pricing: ~$0.10/min LLM usage on standard plans.
-// We mark these as estimates so the UI can show them differently.
-function getDurationCost(det, convListItem) {
-  const dur = det?.metadata?.call_duration_secs || convListItem?.metadata?.call_duration_secs || 0;
-  if (!dur) return null;
-  const mins = dur / 60;
-  const cost = mins * 0.10;   // $0.10 per minute
-  return { cost, dur, isEstimate: true };
-}
-
-// ── COST CALCULATION ─────────────────────────────────
-// Prices per 1M tokens (input / output) in USD
-// Covers all models ElevenLabs Conversational AI supports as of 2025
+// ── COST CALCULATION (unchanged) ─────────────────────────────
 const MODEL_PRICES = {
-  // OpenAI
-  'gpt-4o':                      { in: 2.50,  out: 10.00 },
-  'gpt-4o-mini':                 { in: 0.15,  out: 0.60  },
-  'gpt-4o-2024-11-20':           { in: 2.50,  out: 10.00 },
-  'gpt-4-turbo':                 { in: 10.00, out: 30.00 },
-  'gpt-4':                       { in: 30.00, out: 60.00 },
-  'gpt-3.5-turbo':               { in: 0.50,  out: 1.50  },
-  'o1':                          { in: 15.00, out: 60.00 },
-  'o1-mini':                     { in: 3.00,  out: 12.00 },
-  // Anthropic Claude
-  'claude-3-5-sonnet':           { in: 3.00,  out: 15.00 },
-  'claude-3-5-sonnet-20241022':  { in: 3.00,  out: 15.00 },
-  'claude-3-5-haiku':            { in: 0.80,  out: 4.00  },
-  'claude-3-opus':               { in: 15.00, out: 75.00 },
-  'claude-3-haiku':              { in: 0.25,  out: 1.25  },
-  // Google Gemini
-  'gemini-1.5-flash':            { in: 0.075, out: 0.30  },
-  'gemini-1.5-pro':              { in: 1.25,  out: 5.00  },
-  'gemini-2.0-flash':            { in: 0.10,  out: 0.40  },
-  // Meta Llama (via Groq / hosted)
-  'llama-3.1-70b':               { in: 0.59,  out: 0.79  },
-  'llama-3.1-8b':                { in: 0.05,  out: 0.08  },
-  // Mistral
-  'mistral-large':               { in: 3.00,  out: 9.00  },
-  'mistral-small':               { in: 0.20,  out: 0.60  },
-  // Default fallback (GPT-4o pricing)
-  'default':                     { in: 2.50,  out: 10.00 },
+  'gpt-4o':{in:2.50,out:10.00},'gpt-4o-mini':{in:0.15,out:0.60},
+  'gpt-4o-2024-11-20':{in:2.50,out:10.00},'gpt-4-turbo':{in:10.00,out:30.00},
+  'gpt-4':{in:30.00,out:60.00},'gpt-3.5-turbo':{in:0.50,out:1.50},
+  'o1':{in:15.00,out:60.00},'o1-mini':{in:3.00,out:12.00},
+  'claude-3-5-sonnet':{in:3.00,out:15.00},'claude-3-5-sonnet-20241022':{in:3.00,out:15.00},
+  'claude-3-5-haiku':{in:0.80,out:4.00},'claude-3-opus':{in:15.00,out:75.00},
+  'claude-3-haiku':{in:0.25,out:1.25},'gemini-1.5-flash':{in:0.075,out:0.30},
+  'gemini-1.5-pro':{in:1.25,out:5.00},'gemini-2.0-flash':{in:0.10,out:0.40},
+  'llama-3.1-70b':{in:0.59,out:0.79},'llama-3.1-8b':{in:0.05,out:0.08},
+  'mistral-large':{in:3.00,out:9.00},'mistral-small':{in:0.20,out:0.60},
+  'default':{in:2.50,out:10.00},
 };
-
-function lookupPrice(modelStr) {
-  if (!modelStr) return MODEL_PRICES['default'];
-  const m = modelStr.toLowerCase();
-  // Exact match first
-  if (MODEL_PRICES[m]) return MODEL_PRICES[m];
-  // Partial match — find the first key that appears in the model string
-  for (const key of Object.keys(MODEL_PRICES)) {
-    if (key !== 'default' && m.includes(key)) return MODEL_PRICES[key];
-  }
+function lookupPrice(m) {
+  if (!m) return MODEL_PRICES['default'];
+  const ml=m.toLowerCase();
+  if (MODEL_PRICES[ml]) return MODEL_PRICES[ml];
+  for (const k of Object.keys(MODEL_PRICES)) { if (k!=='default'&&ml.includes(k)) return MODEL_PRICES[k]; }
   return MODEL_PRICES['default'];
 }
 
-function calcTokenCost(tokens) {
-  if (!tokens) return null;
-  const price = lookupPrice(tokens.model);
-  return (tokens.input / 1_000_000) * price.in + (tokens.output / 1_000_000) * price.out;
+// ── DATA ACCESSORS FOR DB ROWS ────────────────────────────────
+// Rows from the `conversations` table use jsonb for transcript/metadata.
+// Token data lives inside metadata (ElevenLabs puts it there).
+
+function rowToTokens(row) {
+  if (!row?.metadata) return null;
+  const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+  const lu   = meta.llm_usage || meta.usage || meta.token_usage || {};
+
+  const input  = lu.input_tokens  ?? lu.prompt_tokens     ?? meta.input_tokens  ?? meta.prompt_tokens  ?? null;
+  const output = lu.output_tokens ?? lu.completion_tokens ?? meta.output_tokens ?? meta.completion_tokens ?? null;
+  const total  = lu.total_tokens  ?? meta.total_tokens    ?? meta.llm_total_tokens ?? null;
+
+  if (input === null && output === null && total === null) return null;
+
+  const i = input  !== null ? Number(input)  : (total ? Math.round(Number(total) * 0.6) : 0);
+  const o = output !== null ? Number(output) : (total ? Math.round(Number(total) * 0.4) : 0);
+  const model = meta.llm_model || meta.model || 'unknown';
+  return { input: i, output: o, total: i + o, model };
 }
 
-// Returns { cost, isEstimate, tok? } or null
-// Tries token-based cost first, falls back to duration-based estimate ($0.10/min)
-function getSessionCost(det, convListItem) {
-  const tok = getTokens(det);
+function rowToCost(row) {
+  // Prefer exact cost stored directly in columns (from ElevenLabs charging object)
+  if (row.llm_cost != null) return { cost: Number(row.llm_cost), isEstimate: false };
+  if (row.cost     != null) return { cost: Number(row.cost),     isEstimate: false };
+  // Try token-based calculation from metadata
+  const tok = rowToTokens(row);
   if (tok) {
-    const cost = calcTokenCost(tok);
-    if (cost !== null) return { cost, isEstimate: false, tok };
+    const p    = lookupPrice(tok.model);
+    const cost = (tok.input / 1_000_000) * p.in + (tok.output / 1_000_000) * p.out;
+    return { cost, isEstimate: false };
   }
-  return getDurationCost(det, convListItem);
+  // Fallback: duration estimate at $0.10/min
+  if (row.duration_secs) {
+    return { cost: (row.duration_secs / 60) * 0.10, isEstimate: true };
+  }
+  return null;
 }
 
-// Convenience: return raw number (used in chart buckets)
-function getLLMCost(det, convListItem) {
-  const s = getSessionCost(det, convListItem);
-  return s ? s.cost : null;
+function rowToTranscript(row) {
+  if (!row?.transcript) return [];
+  // Supabase returns jsonb as a parsed object already — no JSON.parse needed
+  return Array.isArray(row.transcript) ? row.transcript : [];
 }
 
-function fmtLLM(c, isEstimate=false) {
+function extractUserName(row) {
+  // user_name is stored directly as a column (populated during sync)
+  if (row.user_name) return row.user_name;
+  // Fall back to scanning metadata jsonb for dynamic variables
+  if (row.metadata) {
+    try {
+      const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+      const dv   = meta?.conversation_initiation_client_data?.dynamic_variables;
+      if (dv?.user_name) return dv.user_name;
+      if (dv) {
+        for (const k of Object.keys(dv)) {
+          if (k.toLowerCase().includes('name') || k.toLowerCase().includes('user')) {
+            const v = dv[k];
+            if (v && typeof v === 'string' && v.length < 40) return v;
+          }
+        }
+      }
+    } catch {}
+  }
+  // Last resort: scan transcript for agent greeting
+  const tr = rowToTranscript(row);
+  for (const t of tr.slice(0, 20)) {
+    if (t.role === 'agent' && t.message) {
+      const m = t.message.match(/\b(?:hey|hello|hi)\s+([A-Z][a-z]{1,30})\b/i);
+      if (m) return m[1];
+    }
+  }
+  return null;
+}
+
+const fmtLLM = (c, isEstimate=false) => {
   if (c === null || c === undefined) return null;
   const p = isEstimate ? '~' : '';
   if (c === 0) return `${p}$0.00`;
   if (c < 0.000001) return `${p}<$0.000001`;
   if (c < 0.001) return `${p}$${c.toFixed(6)}`;
   return `${p}$${c.toFixed(4)}`;
-}
-
-function fmtTokens(n) {
+};
+const fmtTokens = n => {
   if (!n && n !== 0) return '—';
   if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M';
   if (n >= 1_000)     return (n/1_000).toFixed(1)+'K';
   return String(n);
+};
+
+// ── SYNC BUTTON ───────────────────────────────────────────────
+async function triggerSync() {
+  if (!agentDbId) return;
+  const btn = document.getElementById('syncBtn');
+  btn.disabled = true;
+  btn.classList.add('syncing');
+  btn.textContent = '🔄 Syncing…';
+
+  try {
+    const result = await backendFetch(`/api/conversations/sync/${agentDbId}`, { method: 'POST' });
+    const { newCount, totalCount, lastSyncedAt } = result.data;
+
+    btn.textContent = `✓ ${newCount} new`;
+    setTimeout(() => { btn.textContent = '🔄 Sync Now'; }, 3000);
+
+    updateSyncStatus(lastSyncedAt);
+
+    if (newCount > 0) {
+      // Reload data to show the new conversations
+      await loadConversations();
+    }
+  } catch (err) {
+    btn.textContent = '❌ Failed';
+    setTimeout(() => { btn.textContent = '🔄 Sync Now'; }, 3000);
+    console.error('[Indoo] Sync failed:', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('syncing');
+  }
 }
 
-// ── NAME EXTRACTION ───────────────────────────────────
-function extractUserName(det) {
-  if (!det) return null;
-  const d = det.conversation_initiation_client_data;
-  if (d?.dynamic_variables?.user_name) return d.dynamic_variables.user_name;
-  if (d?.dynamic_variables) {
-    for (const k of Object.keys(d.dynamic_variables)) {
-      if (k.toLowerCase().includes('name')||k.toLowerCase().includes('user')) {
-        const v=d.dynamic_variables[k];
-        if (v&&typeof v==='string'&&v.length<40) return v;
-      }
+function updateSyncStatus(lastSyncedAt) {
+  const dot   = document.getElementById('syncDot');
+  const label = document.getElementById('syncLabel');
+  if (!lastSyncedAt) {
+    dot.className = 'sync-dot never';
+    label.textContent = 'Never synced';
+    return;
+  }
+  const mins = Math.floor((Date.now() - new Date(lastSyncedAt).getTime()) / 60000);
+  dot.className = mins > 60 ? 'sync-dot stale' : 'sync-dot';
+  label.textContent = mins < 1 ? 'Synced just now'
+    : mins < 60 ? `Synced ${mins}m ago`
+    : `Synced ${Math.floor(mins/60)}h ago`;
+}
+
+// ── MAIN DATA LOAD ────────────────────────────────────────────
+async function init() {
+  if (!agentDbId) {
+    document.getElementById('usersList').innerHTML =
+      `<div class="ph"><div class="phi">⚠️</div>No agent ID.<br/><a href="index.html">← Go back</a></div>`;
+    return;
+  }
+
+  // Get user role to know whether to show sync button
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    const { data: profile } = await sb.from('profiles').select('role').eq('id', session.user.id).single();
+    currentUserRole = profile?.role;
+    if (currentUserRole === 'admin') {
+      document.getElementById('syncWrap').style.display = 'flex';
     }
   }
-  const vars=d?.conversation_config_override?.agent?.prompt?.variables;
-  if (Array.isArray(vars)){const m=vars.find(v=>v.name?.toLowerCase().includes('name'));if(m?.value)return m.value;}
-  if (det.metadata?.user_name) return det.metadata.user_name;
-  const tr=det.transcript||[], fa=tr.find(t=>t.role==='agent');
-  if (fa?.message){
-    const msg=fa.message;
-    const g=msg.match(/(?:hey|hello|hi|howdy|welcome|good\s+(?:morning|afternoon|evening))[,!]?\s+([A-Z][a-z]{1,30})/i);
-    if (g) return g[1];
-    const mid=msg.match(/\b(?:hey|hi|hello)\s+([A-Z][a-z]{1,30})\b/i);
-    if (mid) return mid[1];
-  }
-  for (const t of tr.slice(0,20)){
-    if (t.role==='agent'&&t.message){const m=t.message.match(/\b(?:hey|hello|hi)\s+([A-Z][a-z]{1,30})\b/i);if(m)return m[1];}
-  }
-  return null;
+
+  await loadConversations();
 }
 
-// ── FETCH ────────────────────────────────────────────
-async function fetchAll() {
-  if (!apiKey) return;
+async function loadConversations() {
   document.getElementById('loadBar').classList.add('on');
-  try {
-    // ── Step 1: fetch ALL pages of the conversation list ──
-    let allFetched = [], cursor = null, page = 0;
-    setProgress('Fetching conversations…', 0, 0);
-    do {
-      let url = 'https://api.elevenlabs.io/v1/convai/conversations?page_size=100';
-      if (agentIdVal) url += `&agent_id=${encodeURIComponent(agentIdVal)}`;
-      if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
-      const res = await fetch(url, {headers:{'xi-api-key': apiKey}});
-      if (!res.ok) { const e=await res.json().catch(()=>({})); throw new Error(e?.detail?.message||`API ${res.status}`); }
-      const data = await res.json();
-      const page_convs = data.conversations || [];
-      allFetched.push(...page_convs);
-      cursor = data.next_cursor || data.cursor || null; // handle both field names
-      page++;
-      setProgress(`Fetched ${allFetched.length} conversations…`, 0, 0);
-      // safety: stop after 20 pages (2000 convs)
-      if (page >= 20) break;
-    } while (cursor);
+  setLoadingState('Fetching conversations from cache…');
 
-    allConvs = allFetched;
+  try {
+    // ── Step 1: Get cached conversations from backend (fast — reads DB) ──
+    const result = await backendFetch(`/api/conversations/${agentDbId}?limit=1000`);
+    allConvs = result.data.conversations || [];
+
+    // Update sync status badge
+    updateSyncStatus(result.data.lastSyncedAt);
 
     if (!allConvs.length) {
-      document.getElementById('usersList').innerHTML=`<div class="ph"><div class="phi">🌵</div>No conversations yet.</div>`;
-      renderOverview(); return;
+      const msg = currentUserRole === 'admin'
+        ? 'No conversations cached yet. Click "Sync Now" to fetch from ElevenLabs.'
+        : 'No conversations available yet.';
+      document.getElementById('usersList').innerHTML =
+        `<div class="ph"><div class="phi">🌵</div>${msg}</div>`;
+      renderOverview();
+      return;
     }
 
-    // ── Step 2: batch-fetch details (10 at a time) to avoid rate limits ──
-    const BATCH = 10;
-    let done = 0;
-    setProgress(`Loading session details… 0 / ${allConvs.length}`, done, allConvs.length);
-
-    for (let i = 0; i < allConvs.length; i += BATCH) {
-      const batch = allConvs.slice(i, i + BATCH);
-      await Promise.allSettled(batch.map(c => fetchDetail(c.conversation_id)));
-      done += batch.length;
-      setProgress(`Loading session details… ${Math.min(done, allConvs.length)} / ${allConvs.length}`, done, allConvs.length);
-      // small delay between batches to respect rate limits
-      if (i + BATCH < allConvs.length) await sleep(120);
-    }
-
-    // ── Step 3: log the first detail so we can see real field names ──
-    const firstDetail = Object.values(detailCache)[0];
-    if (firstDetail) {
-      console.log('[Indoo] Sample metadata fields:', Object.keys(firstDetail.metadata || {}));
-      console.log('[Indoo] Sample metadata values:', firstDetail.metadata);
-      console.log('[Indoo] Full detail sample:', firstDetail);
-    }
-
+    // ── Step 2: Build user map and render ──────────────────────
     buildUserMap();
     renderUsers(Object.keys(userMap).sort());
     renderOverview();
 
-  } catch(e) {
-    document.getElementById('usersList').innerHTML=`<div class="ph"><div class="phi">😬</div>${esc(e.message)}</div>`;
-    console.error('[Indoo] fetchAll error:', e);
+  } catch (err) {
+    const isOffline = err.message.includes('fetch') || err.message.includes('Failed to fetch');
+    document.getElementById('usersList').innerHTML = `
+      <div class="ph">
+        <div class="phi">${isOffline ? '🔌' : '😬'}</div>
+        ${isOffline
+          ? 'Backend offline.<br/>Start your backend server and refresh.'
+          : esc(err.message)}
+      </div>`;
+    console.error('[Indoo] loadConversations error:', err);
   } finally {
     document.getElementById('loadBar').classList.remove('on');
-    clearProgress();
   }
 }
 
-function setProgress(msg, done, total) {
-  const el = document.getElementById('usersList');
-  const pct = total > 0 ? Math.round((done/total)*100) : 0;
-  el.innerHTML = `
+function setLoadingState(msg) {
+  document.getElementById('usersList').innerHTML = `
     <div class="ph" style="gap:10px;display:flex;flex-direction:column;align-items:center;">
       <div class="spinner"></div>
       <div style="font-size:.75rem;font-weight:700;color:var(--ink2);text-align:center;">${msg}</div>
-      ${total > 0 ? `
-        <div style="width:100%;background:var(--border);border-radius:50px;height:6px;overflow:hidden;">
-          <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--lav),var(--peach));border-radius:50px;transition:width .3s;"></div>
-        </div>
-        <div style="font-size:.65rem;color:var(--ink3);font-weight:600;">${pct}% complete</div>
-      ` : ''}
     </div>`;
 }
 
-function clearProgress() { /* will be replaced by renderUsers */ }
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-async function fetchDetail(id) {
-  if (detailCache[id]) return detailCache[id];
-  try {
-    const res=await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${id}`,{headers:{'xi-api-key':apiKey}});
-    if (!res.ok) return null;
-    const d=await res.json(); detailCache[id]=d; return d;
-  } catch{return null;}
-}
-
-// ── BUILD USER MAP ────────────────────────────────────
+// ── BUILD USER MAP ────────────────────────────────────────────
 function buildUserMap() {
-  userMap={};
-  for (const c of allConvs){
-    const det=detailCache[c.conversation_id];
-    const name=extractUserName(det)||'Unknown User';
-    if (!userMap[name]) userMap[name]=[];
-    userMap[name].push(c);
+  userMap = {};
+  for (const row of allConvs) {
+    const name = extractUserName(row) || 'Unknown User';
+    if (!userMap[name]) userMap[name] = [];
+    userMap[name].push(row);
   }
 }
 
-// ── OVERVIEW ─────────────────────────────────────────
+// ── OVERVIEW ─────────────────────────────────────────────────
 function renderOverview() {
-  const dets = allConvs.map(c=>detailCache[c.conversation_id]);
-  const n    = allConvs.length;
+  const n = allConvs.length;
 
-  // durations
-  const durs = allConvs.map(c => {
-    const det = detailCache[c.conversation_id];
-    return det?.metadata?.call_duration_secs || c.metadata?.call_duration_secs || 0;
-  }).filter(Boolean);
-  const avgD = durs.length ? Math.round(durs.reduce((a,b)=>a+b,0)/durs.length) : 0;
+  const durs = allConvs.map(r => r.duration_secs).filter(Boolean);
+  const avgD = durs.length ? Math.round(durs.reduce((a,b)=>a+b,0) / durs.length) : 0;
 
-  // tokens
-  const tokensList = dets.filter(Boolean).map(d => getTokens(d)).filter(Boolean);
+  const tokensList = allConvs.map(rowToTokens).filter(Boolean);
   const totInput  = tokensList.reduce((a,t) => a + t.input,  0);
   const totOutput = tokensList.reduce((a,t) => a + t.output, 0);
   const totTokens = totInput + totOutput;
   const avgTokens = tokensList.length ? Math.round(totTokens / tokensList.length) : 0;
   const hasTokens = tokensList.length > 0;
 
-  // models detected
-  const modelSet = [...new Set(tokensList.map(t=>t.model).filter(m=>m&&m!=='unknown'))];
-
-  // LLM cost — token-based where available, duration-estimate otherwise
-  const sessionCosts = allConvs.map((c, i) => getSessionCost(dets[i], c)).filter(Boolean);
+  const sessionCosts = allConvs.map(rowToCost).filter(Boolean);
   const totLLM  = sessionCosts.reduce((a, s) => a + s.cost, 0);
   const avgLLM  = sessionCosts.length ? totLLM / sessionCosts.length : null;
   const hasLLM  = sessionCosts.length > 0;
-  const anyEstimate = sessionCosts.some(s => s.isEstimate);
-  const allEstimate = sessionCosts.length > 0 && sessionCosts.every(s => s.isEstimate);
-
-  // debug
-  const sampleDet = dets.find(Boolean);
-  if (sampleDet) {
-    console.log('[Indoo] All metadata keys:', Object.keys(sampleDet.metadata||{}));
-    console.log('[Indoo] token probe result:', getTokens(sampleDet));
-    console.log('[Indoo] cost probe result:', calcTokenCost(getTokens(sampleDet)));
-    console.log('[Indoo] Full metadata sample:', sampleDet.metadata);
-  }
+  const anyEst  = sessionCosts.some(s => s.isEstimate);
+  const allEst  = sessionCosts.length > 0 && sessionCosts.every(s => s.isEstimate);
+  const modelSet = [...new Set(tokensList.map(t=>t.model).filter(m=>m&&m!=='unknown'))];
 
   document.getElementById('sv1').textContent = n || '0';
   document.getElementById('sv2').textContent = fmtDur(avgD);
 
   if (hasTokens) {
-    document.getElementById('sv3').textContent = fmtTokens(totTokens);
+    document.getElementById('sv3').textContent    = fmtTokens(totTokens);
     document.getElementById('sv3sub').textContent = `${fmtTokens(totInput)} in · ${fmtTokens(totOutput)} out`;
-    document.getElementById('sv4').textContent = fmtTokens(avgTokens);
+    document.getElementById('sv4').textContent    = fmtTokens(avgTokens);
   } else {
-    document.getElementById('sv3').textContent = '—';
+    document.getElementById('sv3').textContent    = '—';
     document.getElementById('sv3sub').textContent = 'no token data from API';
-    document.getElementById('sv4').textContent = '—';
+    document.getElementById('sv4').textContent    = '—';
   }
 
-  document.getElementById('sv5').textContent = hasLLM ? fmtLLM(totLLM, anyEstimate) : '—';
+  document.getElementById('sv5').textContent = hasLLM ? fmtLLM(totLLM, anyEst) : '—';
   if (hasLLM) {
-    if (allEstimate) {
-      document.getElementById('sv5sub').textContent = '~est. from duration ($0.10/min)';
-    } else if (anyEstimate) {
-      document.getElementById('sv5sub').textContent = 'mix of tokens + duration est.';
-    } else if (modelSet.length) {
-      document.getElementById('sv5sub').textContent = `Model: ${modelSet.slice(0,2).join(', ')}`;
-    }
+    document.getElementById('sv5sub').textContent = allEst
+      ? '~est. from duration ($0.10/min)'
+      : anyEst ? 'mix of tokens + duration est.'
+      : modelSet.length ? `Model: ${modelSet.slice(0,2).join(', ')}` : 'USD (calculated)';
   }
-  document.getElementById('sv6').textContent = avgLLM !== null ? fmtLLM(avgLLM, anyEstimate) : '—';
-
+  document.getElementById('sv6').textContent = avgLLM !== null ? fmtLLM(avgLLM, anyEst) : '—';
   document.getElementById('llmLegend').style.display = hasLLM ? 'flex' : 'none';
 
   renderChart(hasLLM);
 }
 
 function renderChart(hasLLM) {
-  // bucket by day
-  const buckets={};
-  for (const c of allConvs){
-    const u=getUnix(c);
-    const sk=u?new Date(u*1000).toISOString().slice(0,10):'0000';
-    const lbl=u?new Date(u*1000).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'?';
-    if (!buckets[sk]) buckets[sk]={lbl,n:0,llm:0};
+  const buckets = {};
+  for (const row of allConvs) {
+    const u  = row.start_time_unix;
+    const sk = u ? new Date(u*1000).toISOString().slice(0,10) : '0000';
+    const lb = u ? new Date(u*1000).toLocaleDateString('en-IN',{day:'numeric',month:'short'}) : '?';
+    if (!buckets[sk]) buckets[sk] = { lbl: lb, n: 0, llm: 0 };
     buckets[sk].n++;
-    const det=detailCache[c.conversation_id];
-    const llm=getLLMCost(det);
-    if (llm!==null) buckets[sk].llm+=llm;
+    const sess = rowToCost(row);
+    if (sess) buckets[sk].llm += sess.cost;
   }
-  const keys  =Object.keys(buckets).sort();
-  const labels=keys.map(k=>buckets[k].lbl);
-  const counts=keys.map(k=>buckets[k].n);
-  const llmVs =keys.map(k=>parseFloat(buckets[k].llm.toFixed(5)));
+  const keys   = Object.keys(buckets).sort();
+  const labels = keys.map(k => buckets[k].lbl);
+  const counts = keys.map(k => buckets[k].n);
+  const llmVs  = keys.map(k => parseFloat(buckets[k].llm.toFixed(5)));
 
-  if (chartInst){chartInst.destroy();chartInst=null;}
-  const ctx=document.getElementById('mainChart').getContext('2d');
-  chartInst=new Chart(ctx,{
-    type:'line',
-    data:{
+  if (chartInst) { chartInst.destroy(); chartInst = null; }
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  chartInst = new Chart(ctx, {
+    type: 'line',
+    data: {
       labels,
-      datasets:[
+      datasets: [
         {
           label:'Sessions',data:counts,
           borderColor:'#9b7ff4',backgroundColor:'rgba(155,127,244,0.08)',
@@ -666,7 +592,7 @@ function renderChart(hasLLM) {
         }]:[]),
       ],
     },
-    options:{
+    options: {
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
@@ -676,11 +602,7 @@ function renderChart(hasLLM) {
           titleColor:'#2d2926',bodyColor:'#6b6560',padding:12,cornerRadius:10,
           titleFont:{family:'Nunito',weight:'800',size:12},
           bodyFont:{family:'Nunito',weight:'600',size:11},
-          callbacks:{
-            label:ctx=>ctx.dataset.label==='LLM Cost ($)'
-              ?`  LLM Cost: $${ctx.parsed.y.toFixed(5)}`
-              :`  Sessions: ${ctx.parsed.y}`
-          }
+          callbacks:{label:ctx=>ctx.dataset.label==='LLM Cost ($)'?`  LLM Cost: $${ctx.parsed.y.toFixed(5)}`:`  Sessions: ${ctx.parsed.y}`}
         },
       },
       scales:{
@@ -692,208 +614,153 @@ function renderChart(hasLLM) {
   });
 }
 
-function renderTable() {
-  const body=document.getElementById('tBody');
-  const sorted=[...allConvs].sort((a,b)=>(getUnix(b)||0)-(getUnix(a)||0));
-  if (!sorted.length){body.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--ink3);padding:28px;">No sessions found</td></tr>`;return;}
-  body.innerHTML='';
-  sorted.forEach((c,i)=>{
-    const det  = detailCache[c.conversation_id];
-    const u    = getUnix(c);
-    const dur  = c.metadata?.call_duration_secs;
-    const uT   = det?(det.transcript||[]).filter(t=>t.role==='user').length:0;
-    const name = (det?extractUserName(det):null)||'Unknown User';
-    const tok  = det ? getTokens(det) : null;
-    const sess = getSessionCost(det, c);
-    const ls   = sess ? fmtLLM(sess.cost, sess.isEstimate) : null;
-    const tr   = document.createElement('tr');
-
-    // Token cell: "1.2K / 0.4K" with tooltip showing model
-    let tokCell = '—';
-    if (tok) {
-      const tip = tok.model && tok.model !== 'unknown'
-        ? `title="Model: ${esc(tok.model)} · $${lookupPrice(tok.model).in}/$${lookupPrice(tok.model).out} per 1M in/out"`
-        : '';
-      tokCell = `<span class="tok-cell" ${tip}>${fmtTokens(tok.input)} <span class="tok-sep">/</span> ${fmtTokens(tok.output)}</span>`;
-    }
-
-    tr.innerHTML=`
-      <td><div class="td-user"><div class="td-av">${esc(initials(name))}</div><span class="td-name">${esc(name)}</span></div></td>
-      <td class="mono">${u?`${fmtDate(u)} · ${fmtTime(u)}`:'—'}</td>
-      <td class="mono">${fmtDur(dur)}</td>
-      <td>${uT||'—'}</td>
-      <td class="mono">${tokCell}</td>
-      <td><span class="td-badge ${stClass(c.status)}">${c.status}</span></td>
-      <td class="td-llm ${ls?'':'empty'}">${ls||'—'}</td>`;
-    body.appendChild(tr);
-  });
-}
-
-// ── RENDER USERS ─────────────────────────────────────
+// ── RENDER USERS ─────────────────────────────────────────────
 function renderUsers(names) {
-  const el=document.getElementById('usersList');
-  if (!names.length){el.innerHTML=`<div class="ph"><div class="phi">🔍</div>No users match!</div>`;return;}
-  el.innerHTML=`<div class="users-header">👥 Users (${names.length})</div>`;
-  names.forEach((name,i)=>{
-    const convs=userMap[name]||[], dur=convs.reduce((a,c)=>a+(c.metadata?.call_duration_secs||0),0);
-    const div=document.createElement('div');
-    div.className='user-row slide-up'+(name===activeUser?' active':'');
-    div.style.animationDelay=(i*22)+'ms';
-    div.innerHTML=`
+  const el = document.getElementById('usersList');
+  if (!names.length) { el.innerHTML=`<div class="ph"><div class="phi">🔍</div>No users match!</div>`; return; }
+  el.innerHTML = `<div class="users-header">👥 Users (${names.length})</div>`;
+  names.forEach((name, i) => {
+    const convs = userMap[name] || [];
+    const dur   = convs.reduce((a,r) => a + (r.duration_secs||0), 0);
+    const div   = document.createElement('div');
+    div.className = 'user-row slide-up' + (name===activeUser?' active':'');
+    div.style.animationDelay = (i * 22) + 'ms';
+    div.innerHTML = `
       <div class="u-av">${esc(initials(name))}</div>
       <div class="u-info">
         <div class="u-name">${esc(name)}</div>
         <div class="u-meta">${convs.length} session${convs.length!==1?'s':''} · ${fmtDur(dur)}</div>
       </div>
       <div class="u-badge">${convs.length}</div>`;
-    div.onclick=()=>selectUser(name);
+    div.onclick = () => selectUser(name);
     el.appendChild(div);
   });
 }
-function filterUsers(){
-  const q=document.getElementById('userSearch').value.trim().toLowerCase();
+function filterUsers() {
+  const q = document.getElementById('userSearch').value.trim().toLowerCase();
   renderUsers(Object.keys(userMap).filter(n=>n.toLowerCase().includes(q)).sort());
 }
 
-// ── SELECT USER ──────────────────────────────────────
-function selectUser(name){
-  activeUser=name;activeConv=null;activeDayFilter=null;
-  document.querySelectorAll('.user-row').forEach(r=>r.classList.toggle('active',r.querySelector('.u-name')?.textContent===name));
-  const convs=userMap[name]||[];
-  let tQ=0,tD=0,dN=0;
-  convs.forEach(c=>{
-    const d=detailCache[c.conversation_id];
-    if (d) tQ+=(d.transcript||[]).filter(t=>t.role==='user').length;
-    if (c.metadata?.call_duration_secs){tD+=c.metadata.call_duration_secs;dN++;}
-  });
-  const strip=document.getElementById('userStrip');
-  if(strip){strip.style.display='flex';
-  document.getElementById('usAv').textContent   =initials(name);
-  document.getElementById('usName').textContent =name;
-  document.getElementById('usSub').textContent  =convs.length+' sessions';
-  document.getElementById('upS').textContent    =convs.length;
-  document.getElementById('upQ').textContent    =tQ||'—';
-  document.getElementById('upA').textContent    =dN?fmtDur(Math.round(tD/dN)):'—';}
+// ── SELECT USER ──────────────────────────────────────────────
+function selectUser(name) {
+  activeUser = name; activeConv = null; activeDayFilter = null;
+  document.querySelectorAll('.user-row').forEach(r =>
+    r.classList.toggle('active', r.querySelector('.u-name')?.textContent === name));
+  const convs = userMap[name] || [];
   buildDateFilter(convs);
   renderTimeline(convs);
   showHint();
   switchTab('ch');
 }
 
-// ── DATE FILTER ──────────────────────────────────────
-function buildDateFilter(convs){
-  const bar=document.getElementById('dfbar'), dm={};
-  for (const c of convs){const u=getUnix(c);if(!u)continue;const k=daySort(u);if(!dm[k])dm[k]=dayLabelShort(u);}
-  const days=Object.keys(dm).sort().reverse();
-  if (days.length<=1){bar.className='dfbar';return;}
-  bar.innerHTML='<span class="df-lbl">Filter:</span>';
-  const ac=document.createElement('div');
-  ac.className='df-chip all active';ac.textContent=`All (${convs.length})`;
-  ac.onclick=()=>applyDayFilter(null,convs);bar.appendChild(ac);
-  days.forEach(k=>{
-    const cnt=convs.filter(c=>daySort(getUnix(c))===k).length;
-    const chip=document.createElement('div');
-    chip.className='df-chip';chip.dataset.day=k;
+// ── DATE FILTER ──────────────────────────────────────────────
+function buildDateFilter(convs) {
+  const bar = document.getElementById('dfbar'), dm = {};
+  for (const r of convs) { const u=r.start_time_unix; if(!u)continue; const k=daySort(u); if(!dm[k])dm[k]=dayLabelShort(u); }
+  const days = Object.keys(dm).sort().reverse();
+  if (days.length <= 1) { bar.className='dfbar'; return; }
+  bar.innerHTML = '<span class="df-lbl">Filter:</span>';
+  const ac = document.createElement('div');
+  ac.className='df-chip all active'; ac.textContent=`All (${convs.length})`;
+  ac.onclick=()=>applyDayFilter(null,convs); bar.appendChild(ac);
+  days.forEach(k => {
+    const cnt  = convs.filter(r=>daySort(r.start_time_unix)===k).length;
+    const chip = document.createElement('div');
+    chip.className='df-chip'; chip.dataset.day=k;
     chip.textContent=`${dm[k]} (${cnt})`;
-    chip.onclick=()=>applyDayFilter(k,convs);bar.appendChild(chip);
+    chip.onclick=()=>applyDayFilter(k,convs); bar.appendChild(chip);
   });
   bar.className='dfbar vis';
 }
-function applyDayFilter(dk,all){
-  activeDayFilter=dk;activeConv=null;
+function applyDayFilter(dk, all) {
+  activeDayFilter=dk; activeConv=null;
   document.querySelectorAll('.df-chip').forEach(c=>c.classList.toggle('active',dk===null?c.classList.contains('all'):c.dataset.day===dk));
-  renderTimeline(dk?all.filter(c=>daySort(getUnix(c))===dk):all);
+  renderTimeline(dk ? all.filter(r=>daySort(r.start_time_unix)===dk) : all);
   showHint();
 }
 
-// ── TIMELINE ────────────────────────────────────────
-function renderTimeline(convs){
-  const scr=document.getElementById('tlScroll');
-  document.getElementById('tlCnt').textContent=`${convs.length} session${convs.length!==1?'s':''}`;
-  if (!convs.length){scr.innerHTML=`<div class="center-state"><div class="cs-icon">📭</div><div class="cs-title">No sessions</div></div>`;return;}
-  const groups={};
-  for (const c of convs){
-    const k=daySort(getUnix(c)),l=dayLabel(getUnix(c));
-    if (!groups[k]) groups[k]={l,convs:[]};
-    groups[k].convs.push(c);
+// ── TIMELINE ────────────────────────────────────────────────
+function renderTimeline(rows) {
+  const scr = document.getElementById('tlScroll');
+  document.getElementById('tlCnt').textContent = `${rows.length} session${rows.length!==1?'s':''}`;
+  if (!rows.length) { scr.innerHTML=`<div class="center-state"><div class="cs-icon">📭</div><div class="cs-title">No sessions</div></div>`; return; }
+
+  const groups = {};
+  for (const r of rows) {
+    const k=daySort(r.start_time_unix), l=dayLabel(r.start_time_unix);
+    if (!groups[k]) groups[k]={l,rows:[]};
+    groups[k].rows.push(r);
   }
-  const days=Object.keys(groups).sort().reverse();
-  scr.innerHTML='';
-  days.forEach((day,di)=>{
-    const {l,convs:dc}=groups[day];
-    dc.sort((a,b)=>(getUnix(b)||0)-(getUnix(a)||0));
-    const grp=document.createElement('div');
-    grp.className='day-grp slide-up';grp.style.animationDelay=(di*40)+'ms';
+  const days = Object.keys(groups).sort().reverse();
+  scr.innerHTML = '';
+  days.forEach((day, di) => {
+    const { l, rows: dc } = groups[day];
+    dc.sort((a,b)=>(b.start_time_unix||0)-(a.start_time_unix||0));
+    const grp = document.createElement('div');
+    grp.className='day-grp slide-up'; grp.style.animationDelay=(di*40)+'ms';
     grp.innerHTML=`<div class="day-strip"><div class="day-pill">${esc(l)}</div><div class="day-line"></div><div class="day-n">${dc.length}</div></div>`;
-    dc.forEach((c,ci)=>{
-      const det=detailCache[c.conversation_id];
-      const dur=c.metadata?.call_duration_secs,time=getUnix(c);
-      const uT=det?(det.transcript||[]).filter(t=>t.role==='user').length:0;
-      const prev=(det?.transcript||[]).find(t=>t.role==='user')?.message||'No preview';
-      const tok=det?getTokens(det):null;
-      const sess=getSessionCost(det,c);
-      const ls=sess?fmtLLM(sess.cost,sess.isEstimate):null;
-      const card=document.createElement('div');
-      card.className='sess-card slide-up'+(c.conversation_id===activeConv?' active':'');
+    dc.forEach((r, ci) => {
+      const u    = r.start_time_unix;
+      const tok  = rowToTokens(r);
+      const sess = rowToCost(r);
+      const ls   = sess ? fmtLLM(sess.cost, sess.isEstimate) : null;
+      const tr   = rowToTranscript(r);
+      const prev = tr.find(t=>t.role==='user')?.message || 'No preview';
+      const card = document.createElement('div');
+      card.className='sess-card slide-up'+(r.conversation_id===activeConv?' active':'');
       card.style.animationDelay=(di*40+ci*18)+'ms';
+      const userTurns = tr.filter(t=>t.role==='user').length;
       card.innerHTML=`
         <div class="sc-top">
-          <div class="sc-time">${fmtTime(time)}</div>
-          <div class="sc-stat ${stClass(c.status)}">${c.status}</div>
+          <div class="sc-time">${fmtTime(u)}</div>
+          <div class="sc-stat ${stClass(r.status)}">${r.status||'—'}</div>
         </div>
         <div class="sc-prev">${esc(prev)}</div>
         <div class="sc-chips">
-          ${dur?`<span class="sc-chip">⏱ ${fmtDur(dur)}</span>`:''}
-          ${uT?`<span class="sc-chip">💬 ${uT} quer${uT!==1?'ies':'y'}</span>`:''}
+          ${r.duration_secs?`<span class="sc-chip">⏱ ${fmtDur(r.duration_secs)}</span>`:''}
+          ${userTurns?`<span class="sc-chip">💬 ${userTurns} quer${userTurns!==1?'ies':'y'}</span>`:''}
           ${tok?`<span class="sc-chip">🔢 ${fmtTokens(tok.total)}</span>`:''}
           ${ls?`<span class="sc-chip llm">💰 ${ls}</span>`:''}
         </div>`;
-      card.onclick=()=>loadTranscript(c.conversation_id,activeUser,card);
+      card.onclick = () => openTranscript(r, activeUser, card);
       grp.appendChild(card);
     });
     scr.appendChild(grp);
   });
 }
 
-// ── TRANSCRIPT ───────────────────────────────────────
-async function loadTranscript(id,userName,cardEl){
+// ── TRANSCRIPT (reads from DB row — no extra fetch needed) ────
+function openTranscript(row, userName, cardEl) {
   document.querySelectorAll('.sess-card').forEach(c=>c.classList.remove('active'));
-  cardEl.classList.add('active');activeConv=id;
-  const panel=document.getElementById('trPanel');
-  panel.innerHTML=`<div class="center-state"><div class="spinner"></div></div>`;
-  try{
-    const data=await fetchDetail(id);
-    if (!data) throw new Error('Empty response');
-    renderTranscript(data,userName);
-  }catch(e){
-    panel.innerHTML=`<div class="center-state"><div class="cs-icon">😬</div><div class="cs-title">Couldn't load</div><div class="cs-sub">${esc(e.message)}</div></div>`;
-  }
+  cardEl.classList.add('active');
+  activeConv = row.conversation_id;   // conversations.conversation_id
+  renderTranscript(row, userName);
 }
 
-function renderTranscript(data,userName){
-  const {conversation_id,status,metadata,transcript=[],agent_name}=data;
-  const start=metadata?.start_time_unix_secs,dur=metadata?.call_duration_secs;
-  const uT=transcript.filter(t=>t.role==='user').length;
-  const dName=userName||extractUserName(data)||'User';
-  const ini=initials(dName);
-  const tok=getTokens(data);
-  const sess=getSessionCost(data, null);
-  const ls=sess?fmtLLM(sess.cost,sess.isEstimate):null;
+function renderTranscript(row, userName) {
+  const tr     = rowToTranscript(row);
+  const dName  = userName || extractUserName(row) || 'User';
+  const ini    = initials(dName);
+  const tok    = rowToTokens(row);
+  const sess   = rowToCost(row);
+  const ls     = sess ? fmtLLM(sess.cost, sess.isEstimate) : null;
 
-  // ── Populate right info panel ──
-  const charging=metadata?.charging||{};
-  const ipBody=document.getElementById('ipBody');
-  const ipRows=[
-    {label:'Conversation ID',value:conversation_id,mono:true,small:true},
-    {label:'Status',value:`<span class="sc-stat ${stClass(status)}" style="font-size:.65rem">${status}</span>`,html:true},
-    {label:'Date',value:start?fmtDate(start):'—'},
-    {label:'Time',value:start?fmtTime(start):'—'},
-    {label:'Duration',value:fmtDur(dur)},
-    {label:'Cost',value:charging.cost!=null?`$${Number(charging.cost).toFixed(4)}`:(ls||'—')},
-    {label:'LLM Price',value:charging.llm_price!=null?`$${Number(charging.llm_price).toFixed(6)}`:( tok?`$${lookupPrice(tok.model).in}/$${lookupPrice(tok.model).out}/1M`:'—')},
-    {label:'LLM Cost',value:charging.llm_cost!=null?`$${Number(charging.llm_cost).toFixed(6)}`:(ls||'—')},
+  // ── Populate right info panel ──────────────────────────────
+  const llmModel = (()=>{ try { const m=typeof row.metadata==='string'?JSON.parse(row.metadata):row.metadata; return m?.llm_model||m?.model||null; } catch { return null; } })();
+
+  const ipRows = [
+    { label:'Conversation ID', value: row.conversation_id,  mono:true, small:true },
+    { label:'Status',          value: `<span class="sc-stat ${stClass(row.status)}" style="font-size:.65rem">${row.status||'—'}</span>`, html:true },
+    { label:'Date',            value: row.start_time_unix ? fmtDate(row.start_time_unix) : '—' },
+    { label:'Time',            value: row.start_time_unix ? fmtTime(row.start_time_unix) : '—' },
+    { label:'Duration',        value: fmtDur(row.duration_secs) },
+    { label:'LLM Cost',        value: row.llm_cost != null ? `$${Number(row.llm_cost).toFixed(6)}` : (ls||'—') },
+    { label:'Cost',            value: row.cost     != null ? `$${Number(row.cost).toFixed(4)}`     : '—' },
+    { label:'LLM Model',       value: llmModel || '—' },
+    { label:'Tokens In/Out',   value: tok ? `${fmtTokens(tok.input)} / ${fmtTokens(tok.output)}` : '—' },
   ];
-  ipBody.innerHTML=`
+
+  document.getElementById('ipBody').innerHTML = `
     <div class="ip-user">
       <div class="ip-av">${esc(ini)}</div>
       <div class="ip-uname">${esc(dName)}</div>
@@ -905,52 +772,52 @@ function renderTranscript(data,userName){
         <div class="ip-val${r.mono?' mono':''}${r.small?' ip-val-sm':''}">${r.html?r.value:esc(String(r.value))}</div>
       </div>`).join('')}`;
 
-  const panel=document.getElementById('trPanel');
-  panel.className='tr-panel pop-in';
-  panel.innerHTML=`
+  const panel = document.getElementById('trPanel');
+  panel.className = 'tr-panel pop-in';
+  panel.innerHTML = `
     <div class="tr-head">
       <div class="tr-row1">
         <div class="tr-av">${esc(ini)}</div>
         <div class="tr-info">
           <div class="tr-name">Chat with <em>${esc(dName)}</em></div>
-          <div class="tr-id">${esc(conversation_id)}</div>
+          <div class="tr-id">${esc(row.conversation_id)}</div>
         </div>
       </div>
     </div>
     <div class="msgs" id="msgsBox"></div>`;
 
-  const box=document.getElementById('msgsBox');
-  if (!transcript.length){
+  const box = document.getElementById('msgsBox');
+  if (!tr.length) {
     box.innerHTML=`<div class="center-state"><div class="cs-icon">📭</div><div class="cs-title">No messages</div></div>`;
     return;
   }
-  transcript.forEach((t,i)=>{
-    const isUser=t.role==='user',ts=t.time_in_call_secs;
-    const tStr=ts!=null?`${String(Math.floor(ts/60)).padStart(2,'0')}:${String(ts%60).padStart(2,'0')}`:null;
-    const row=document.createElement('div');
-    row.className=`msg-wrap ${isUser?'user':'agent'} slide-up`;
-    row.style.animationDelay=Math.min(i*12,300)+'ms';
-    row.innerHTML=`
+  tr.forEach((t, i) => {
+    const isUser = t.role === 'user', ts = t.time_in_call_secs;
+    const tStr   = ts != null ? `${String(Math.floor(ts/60)).padStart(2,'0')}:${String(ts%60).padStart(2,'0')}` : null;
+    const row2   = document.createElement('div');
+    row2.className = `msg-wrap ${isUser?'user':'agent'} slide-up`;
+    row2.style.animationDelay = Math.min(i*12,300)+'ms';
+    row2.innerHTML = `
       <div class="msg-av ${isUser?'ut':'at'}">${isUser?esc(ini):'🤖'}</div>
       <div class="msg-col">
-        <div class="msg-who">${isUser?esc(dName):(esc(agent_name)||'Agent')}${tStr?` · ${tStr}`:''}</div>
+        <div class="msg-who">${isUser?esc(dName):'Agent'}${tStr?` · ${tStr}`:''}</div>
         <div class="msg-bub">${esc(t.message||t.text||'')}</div>
       </div>`;
-    box.appendChild(row);
+    box.appendChild(row2);
   });
-  box.scrollTop=0;
+  box.scrollTop = 0;
 }
 
-function showHint(){
+function showHint() {
   document.getElementById('trPanel').innerHTML=`<div class="hint"><div class="hint-icon">💬</div><p>Select a session to read the full transcript ✨</p></div>`;
   document.getElementById('ipBody').innerHTML=`<div class="ip-empty"><div class="ip-empty-icon">📋</div><div class="ip-empty-text">Select a session to see details</div></div>`;
 }
 
-document.addEventListener('keydown',e=>{
-  if ((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();document.getElementById('userSearch').focus();}
+document.addEventListener('keydown', e => {
+  if ((e.metaKey||e.ctrlKey)&&e.key==='k') { e.preventDefault(); document.getElementById('userSearch').focus(); }
 });
 
-fetchAll();
+init();
 </script>
 </body>
 </html>
