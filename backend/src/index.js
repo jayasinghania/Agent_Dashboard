@@ -105,9 +105,9 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // ── Start server ──────────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   logger.info('────────────────────────────────────────');
-  logger.info(`🚀 Indoo backend running on port ${PORT}`);
+  logger.info(`🚀 Agent analytics backend running on port ${PORT}`);
   logger.info(`   Environment : ${process.env.NODE_ENV || 'development'}`);
   logger.info(`   Supabase    : ${process.env.SUPABASE_URL}`);
   logger.info(`   CORS origins: ${allowedOrigins.join(', ') || '(none)'}`);
