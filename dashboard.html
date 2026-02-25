@@ -295,19 +295,21 @@ function lookupPrice(m) {
 
 function rowToTokens(row) {
   if (!row?.metadata) return null;
-  const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
-  const lu   = meta.llm_usage || meta.usage || meta.token_usage || {};
+  const meta     = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+  const charging = meta?.charging || {};
+  const llm      = charging?.llm_usage || {};
 
-  const input  = lu.input_tokens  ?? lu.prompt_tokens     ?? meta.input_tokens  ?? meta.prompt_tokens  ?? null;
-  const output = lu.output_tokens ?? lu.completion_tokens ?? meta.output_tokens ?? meta.completion_tokens ?? null;
-  const total  = lu.total_tokens  ?? meta.total_tokens    ?? meta.llm_total_tokens ?? null;
+  // Sum across both generation types
+  const gen1 = llm?.irreversible_generation?.model_usage || {};
+  const gen2 = llm?.initiated_generation?.model_usage    || {};
 
-  if (input === null && output === null && total === null) return null;
+  const input  = (gen1?.input?.tokens        || 0) + (gen2?.input?.tokens        || 0);
+  const output = (gen1?.output_total?.tokens || 0) + (gen2?.output_total?.tokens || 0);
 
-  const i = input  !== null ? Number(input)  : (total ? Math.round(Number(total) * 0.6) : 0);
-  const o = output !== null ? Number(output) : (total ? Math.round(Number(total) * 0.4) : 0);
-  const model = meta.llm_model || meta.model || 'unknown';
-  return { input: i, output: o, total: i + o, model };
+  if (!input && !output) return null;
+
+  const model = charging?.llm_model || meta?.llm_model || 'unknown';
+  return { input, output, total: input + output, model };
 }
 
 function rowToCost(row) {
