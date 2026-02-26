@@ -128,6 +128,7 @@
     .field-input:focus,.field-select:focus{border-color:var(--lav);box-shadow:0 0 0 3px var(--lav-l);}
     .field-input::placeholder{color:var(--ink4);font-weight:500;}
     .modal-err{padding:9px 12px;background:var(--rose-l);border:1.5px solid var(--rose-m);border-radius:8px;font-size:.78rem;color:var(--rose);font-weight:600;margin-bottom:14px;display:none;}
+    .modal-ok{padding:9px 12px;background:var(--mint-l);border:1.5px solid var(--mint-m);border-radius:8px;font-size:.78rem;color:#166534;font-weight:600;margin-bottom:14px;display:none;}
     .modal-actions{display:flex;gap:10px;margin-top:4px;}
     .btn-cancel{flex:1;padding:11px;background:var(--bg);border:1.5px solid var(--border2);border-radius:10px;font-family:'Nunito',sans-serif;font-weight:700;font-size:.85rem;color:var(--ink2);cursor:pointer;transition:all .15s;}
     .btn-cancel:hover{border-color:var(--rose-m);color:var(--rose);background:var(--rose-l);}
@@ -185,7 +186,7 @@
         <div class="section-title">👥 Users</div>
         <div class="section-sub">All registered users and their roles</div>
       </div>
-      <button class="add-btn" onclick="openInviteModal()">＋ Invite User</button>
+      <button class="add-btn" onclick="openInviteModal()">✉️ Invite User</button>
     </div>
     <div id="usersTableWrap">
       <div class="spinner"></div>
@@ -225,6 +226,7 @@
       </select>
     </div>
     <div class="modal-err" id="invErr"></div>
+    <div class="modal-ok"  id="invOk"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModals()">Cancel</button>
       <button class="btn-submit" id="btnInvite" onclick="inviteUser()">Send Invite ✉️</button>
@@ -287,6 +289,10 @@
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
+
+// Backend — same values as dashboard.html and index.html
+const BACKEND_URL = 'https://agentdashboard-production-5777.up.railway.app';
+const API_SECRET  = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e';
 // ────────────────────────────────────────────────────────────────────────────
 
 const { createClient } = supabase;
@@ -300,6 +306,26 @@ let allUsers    = [];
 let allAgents   = [];
 let editUserId  = null;
 let assignUserId = null;
+
+// ── BACKEND HELPER ────────────────────────────────────────────
+async function backendFetch(path, options = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  const token = session?.access_token;
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-secret': API_SECRET,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data?.error?.message || `Backend error ${res.status}`);
+  }
+  return data;
+}
 
 // ── AUTH GUARD ───────────────────────────────────────────────────────────────
 async function init() {
@@ -316,9 +342,7 @@ async function init() {
   document.getElementById('userAv').textContent   = initials(profile.full_name || profile.email);
   document.getElementById('userName').textContent = profile.full_name || profile.email;
 
-  // Reveal page now that auth is confirmed
   document.body.classList.add('ready');
-
   await loadAll();
 }
 
@@ -388,7 +412,6 @@ async function renderAccessTable() {
     return;
   }
 
-  // Load all access rows
   const { data: accessRows } = await sb.from('agent_access').select('user_id, agent_id');
   const accessMap = {};
   for (const row of (accessRows || [])) {
@@ -431,11 +454,12 @@ async function renderAccessTable() {
     </table>`;
 }
 
-// ── INVITE USER ──────────────────────────────────────────────────────────────
+// ── INVITE USER (sends real email via backend) ────────────────────────────────
 function openInviteModal() {
   document.getElementById('inv-email').value = '';
   document.getElementById('inv-role').value  = 'client';
   document.getElementById('invErr').style.display = 'none';
+  document.getElementById('invOk').style.display  = 'none';
   document.getElementById('inviteOverlay').classList.add('open');
   setTimeout(() => document.getElementById('inv-email').focus(), 100);
 }
@@ -444,19 +468,31 @@ async function inviteUser() {
   const email = document.getElementById('inv-email').value.trim();
   const role  = document.getElementById('inv-role').value;
   if (!email) { showModalErr('invErr', 'Please enter an email'); return; }
-  const btn = document.getElementById('btnInvite');
-  btn.disabled = true; btn.textContent = 'Inviting…';
 
-  // Use Supabase admin invite (requires service role key in a real backend)
-  // For now, we create a profile entry; user signs up normally and gets the role
-  const { error } = await sb.from('pending_invites').insert({ email, role, invited_by: currentUser.id });
-  if (error) {
-    showModalErr('invErr', error.message);
+  const btn = document.getElementById('btnInvite');
+  btn.disabled = true; btn.textContent = 'Sending…';
+
+  try {
+    // Insert directly into pending_invites via Supabase
+    const { error } = await sb.from('pending_invites').insert({ email, role });
+    if (error) throw new Error(error.message);
+
+    document.getElementById('invErr').style.display = 'none';
+    const okEl = document.getElementById('invOk');
+    okEl.textContent = `✓ Invite recorded for ${email}`;
+    okEl.style.display = 'block';
+
+    btn.textContent = 'Sent ✓';
+    setTimeout(() => {
+      closeModals();
+      showToast(`Invite sent to ${email}`);
+    }, 1800);
+
+    await loadUsers();
+  } catch (err) {
+    showModalErr('invErr', err.message);
     btn.disabled = false; btn.textContent = 'Send Invite ✉️';
-    return;
   }
-  closeModals(); showToast(`Invite recorded for ${email}`);
-  await loadUsers();
 }
 
 // ── ROLE EDIT ─────────────────────────────────────────────────────────────────
@@ -484,7 +520,6 @@ async function openAssignModal(userId, email) {
   document.getElementById('assign-email').value = email;
   document.getElementById('assignErr').style.display = 'none';
 
-  // Load current assignments for this user
   const { data: current } = await sb.from('agent_access').select('agent_id').eq('user_id', userId);
   const assigned = new Set((current || []).map(r => r.agent_id));
 
@@ -514,7 +549,6 @@ async function saveAssign() {
   const btn = document.getElementById('btnAssign');
   btn.disabled = true; btn.textContent = 'Saving…';
 
-  // Delete existing, then insert new
   await sb.from('agent_access').delete().eq('user_id', assignUserId);
   if (checked.length) {
     const rows = checked.map(agent_id => ({ user_id: assignUserId, agent_id }));

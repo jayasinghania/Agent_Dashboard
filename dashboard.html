@@ -184,7 +184,6 @@
 const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
 
-// Change to your deployed backend URL in production
 const BACKEND_URL = 'https://agentdashboard-production-5777.up.railway.app';
 const API_SECRET  = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e'; 
 // ─────────────────────────────────────────────────────────────
@@ -194,7 +193,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ── URL PARAMS ────────────────────────────────────────────────
 const P          = new URLSearchParams(location.search);
-const agentDbId  = P.get('agentDbId') || '';  // Supabase UUID — used for backend calls
+const agentDbId  = P.get('agentDbId') || '';
 const agentName  = P.get('name')      || 'Agent';
 const agentIdVal = P.get('agentId')   || '';
 const agentEmoji = P.get('emoji')     || '🤖';
@@ -207,8 +206,10 @@ const avEl = document.getElementById('agentAv');
 avEl.textContent = agentEmoji; avEl.dataset.color = agentColor;
 
 // ── STATE ─────────────────────────────────────────────────────
-let allConvs   = [];   // array of `conversations` DB rows
+let allConvs   = [];
 let userMap    = {};
+// userLatestConv[name] = max start_time_unix across all their conversations
+let userLatestConv = {};
 let activeUser = null, activeConv = null, activeDayFilter = null;
 let chartInst  = null;
 let currentUserRole = null;
@@ -267,7 +268,7 @@ function dayLabelShort(u) {
   return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
 }
 
-// ── COST CALCULATION (unchanged) ─────────────────────────────
+// ── COST CALCULATION ─────────────────────────────────────────
 const MODEL_PRICES = {
   'gpt-4o':{in:2.50,out:10.00},'gpt-4o-mini':{in:0.15,out:0.60},
   'gpt-4o-2024-11-20':{in:2.50,out:10.00},'gpt-4-turbo':{in:10.00,out:30.00},
@@ -289,41 +290,29 @@ function lookupPrice(m) {
   return MODEL_PRICES['default'];
 }
 
-// ── DATA ACCESSORS FOR DB ROWS ────────────────────────────────
-// Rows from the `conversations` table use jsonb for transcript/metadata.
-// Token data lives inside metadata (ElevenLabs puts it there).
-
 function rowToTokens(row) {
   if (!row?.metadata) return null;
   const meta     = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
   const charging = meta?.charging || {};
   const llm      = charging?.llm_usage || {};
-
-  // Sum across both generation types
   const gen1 = llm?.irreversible_generation?.model_usage || {};
   const gen2 = llm?.initiated_generation?.model_usage    || {};
-
   const input  = (gen1?.input?.tokens        || 0) + (gen2?.input?.tokens        || 0);
   const output = (gen1?.output_total?.tokens || 0) + (gen2?.output_total?.tokens || 0);
-
   if (!input && !output) return null;
-
   const model = charging?.llm_model || meta?.llm_model || 'unknown';
   return { input, output, total: input + output, model };
 }
 
 function rowToCost(row) {
-  // Prefer exact cost stored directly in columns (from ElevenLabs charging object)
   if (row.llm_cost != null) return { cost: Number(row.llm_cost), isEstimate: false };
   if (row.cost     != null) return { cost: Number(row.cost),     isEstimate: false };
-  // Try token-based calculation from metadata
   const tok = rowToTokens(row);
   if (tok) {
     const p    = lookupPrice(tok.model);
     const cost = (tok.input / 1_000_000) * p.in + (tok.output / 1_000_000) * p.out;
     return { cost, isEstimate: false };
   }
-  // Fallback: duration estimate at $0.10/min
   if (row.duration_secs) {
     return { cost: (row.duration_secs / 60) * 0.10, isEstimate: true };
   }
@@ -332,14 +321,11 @@ function rowToCost(row) {
 
 function rowToTranscript(row) {
   if (!row?.transcript) return [];
-  // Supabase returns jsonb as a parsed object already — no JSON.parse needed
   return Array.isArray(row.transcript) ? row.transcript : [];
 }
 
 function extractUserName(row) {
-  // user_name is stored directly as a column (populated during sync)
   if (row.user_name) return row.user_name;
-  // Fall back to scanning metadata jsonb for dynamic variables
   if (row.metadata) {
     try {
       const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
@@ -355,7 +341,6 @@ function extractUserName(row) {
       }
     } catch {}
   }
-  // Last resort: scan transcript for agent greeting
   const tr = rowToTranscript(row);
   for (const t of tr.slice(0, 20)) {
     if (t.role === 'agent' && t.message) {
@@ -391,7 +376,7 @@ async function triggerSync() {
 
   try {
     const result = await backendFetch(`/api/conversations/sync/${agentDbId}`, { method: 'POST' });
-    const { newCount, totalCount, lastSyncedAt } = result.data;
+    const { newCount, lastSyncedAt } = result.data;
 
     btn.textContent = `✓ ${newCount} new`;
     setTimeout(() => { btn.textContent = '🔄 Sync Now'; }, 3000);
@@ -399,7 +384,6 @@ async function triggerSync() {
     updateSyncStatus(lastSyncedAt);
 
     if (newCount > 0) {
-      // Reload data to show the new conversations
       await loadConversations();
     }
   } catch (err) {
@@ -435,7 +419,6 @@ async function init() {
     return;
   }
 
-  // Get user role to know whether to show sync button
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
     const { data: profile } = await sb.from('profiles').select('role').eq('id', session.user.id).single();
@@ -453,11 +436,9 @@ async function loadConversations() {
   setLoadingState('Fetching conversations from cache…');
 
   try {
-    // ── Step 1: Get cached conversations from backend (fast — reads DB) ──
     const result = await backendFetch(`/api/conversations/${agentDbId}?limit=1000`);
     allConvs = result.data.conversations || [];
 
-    // Update sync status badge
     updateSyncStatus(result.data.lastSyncedAt);
 
     if (!allConvs.length) {
@@ -470,9 +451,8 @@ async function loadConversations() {
       return;
     }
 
-    // ── Step 2: Build user map and render ──────────────────────
     buildUserMap();
-    renderUsers(Object.keys(userMap).sort());
+    renderUsers(sortedUserNames());
     renderOverview();
 
   } catch (err) {
@@ -501,11 +481,31 @@ function setLoadingState(msg) {
 // ── BUILD USER MAP ────────────────────────────────────────────
 function buildUserMap() {
   userMap = {};
+  userLatestConv = {};
+
   for (const row of allConvs) {
     const name = extractUserName(row) || 'Unknown User';
     if (!userMap[name]) userMap[name] = [];
     userMap[name].push(row);
+
+    // Track the latest (highest) start_time_unix for this user
+    const t = row.start_time_unix || 0;
+    if (!userLatestConv[name] || t > userLatestConv[name]) {
+      userLatestConv[name] = t;
+    }
   }
+}
+
+/**
+ * Returns user names sorted by their most recent conversation (newest first).
+ * Falls back to alphabetical within the same timestamp bucket.
+ */
+function sortedUserNames() {
+  return Object.keys(userMap).sort((a, b) => {
+    const diff = (userLatestConv[b] || 0) - (userLatestConv[a] || 0);
+    if (diff !== 0) return diff;
+    return a.localeCompare(b);  // alphabetical tiebreak
+  });
 }
 
 // ── OVERVIEW ─────────────────────────────────────────────────
@@ -616,7 +616,7 @@ function renderChart(hasLLM) {
   });
 }
 
-// ── RENDER USERS ─────────────────────────────────────────────
+// ── RENDER USERS — sorted by latest conversation ──────────────
 function renderUsers(names) {
   const el = document.getElementById('usersList');
   if (!names.length) { el.innerHTML=`<div class="ph"><div class="phi">🔍</div>No users match!</div>`; return; }
@@ -624,6 +624,9 @@ function renderUsers(names) {
   names.forEach((name, i) => {
     const convs = userMap[name] || [];
     const dur   = convs.reduce((a,r) => a + (r.duration_secs||0), 0);
+    // Show when the last conversation happened
+    const latestTs = userLatestConv[name];
+    const latestStr = latestTs ? dayLabelShort(latestTs) : '—';
     const div   = document.createElement('div');
     div.className = 'user-row slide-up' + (name===activeUser?' active':'');
     div.style.animationDelay = (i * 22) + 'ms';
@@ -631,16 +634,19 @@ function renderUsers(names) {
       <div class="u-av">${esc(initials(name))}</div>
       <div class="u-info">
         <div class="u-name">${esc(name)}</div>
-        <div class="u-meta">${convs.length} session${convs.length!==1?'s':''} · ${fmtDur(dur)}</div>
+        <div class="u-meta">${convs.length} session${convs.length!==1?'s':''} · last ${latestStr}</div>
       </div>
       <div class="u-badge">${convs.length}</div>`;
     div.onclick = () => selectUser(name);
     el.appendChild(div);
   });
 }
+
 function filterUsers() {
   const q = document.getElementById('userSearch').value.trim().toLowerCase();
-  renderUsers(Object.keys(userMap).filter(n=>n.toLowerCase().includes(q)).sort());
+  // Filter but preserve latest-first sort order
+  const filtered = sortedUserNames().filter(n => n.toLowerCase().includes(q));
+  renderUsers(filtered);
 }
 
 // ── SELECT USER ──────────────────────────────────────────────
@@ -731,11 +737,11 @@ function renderTimeline(rows) {
   });
 }
 
-// ── TRANSCRIPT (reads from DB row — no extra fetch needed) ────
+// ── TRANSCRIPT ────────────────────────────────────────────────
 function openTranscript(row, userName, cardEl) {
   document.querySelectorAll('.sess-card').forEach(c=>c.classList.remove('active'));
   cardEl.classList.add('active');
-  activeConv = row.conversation_id;   // conversations.conversation_id
+  activeConv = row.conversation_id;
   renderTranscript(row, userName);
 }
 
@@ -747,7 +753,6 @@ function renderTranscript(row, userName) {
   const sess   = rowToCost(row);
   const ls     = sess ? fmtLLM(sess.cost, sess.isEstimate) : null;
 
-  // ── Populate right info panel ──────────────────────────────
   const llmModel = (()=>{ try { const m=typeof row.metadata==='string'?JSON.parse(row.metadata):row.metadata; return m?.llm_model||m?.model||null; } catch { return null; } })();
 
   const ipRows = [

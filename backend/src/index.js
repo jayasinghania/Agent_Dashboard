@@ -1,31 +1,30 @@
 // src/index.js
 // ─────────────────────────────────────────────────────────────
 //  Indoo Backend — Express server entry point
-//
-//  Startup order:
-//  1. Load env vars
-//  2. Set up Express with security middleware
-//  3. Register routes
-//  4. Register error handler (always last)
-//  5. Start listening
 // ─────────────────────────────────────────────────────────────
 
 require('dotenv').config();
 
-const express     = require('express');
-const cors        = require('cors');
-const morgan      = require('morgan');
-const rateLimit   = require('express-rate-limit');
-const logger      = require('./utils/logger');
+const express      = require('express');
+const cors         = require('cors');
+const morgan       = require('morgan');
+const rateLimit    = require('express-rate-limit');
+const logger       = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
 const { requireApiSecret } = require('./middleware/auth');
 
 // ── Route handlers ────────────────────────────────────────────
 const agentsRouter        = require('./routes/agents');
 const conversationsRouter = require('./routes/conversations');
+const authRouter          = require('./routes/auth');
 
 // ── Validate critical env vars on startup ────────────────────
-const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'API_SECRET'];
+const REQUIRED_ENV = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_KEY',
+  'SUPABASE_ANON_KEY',   // needed for sign-in (respects RLS)
+  'API_SECRET',
+];
 const missing = REQUIRED_ENV.filter(k => !process.env[k]);
 if (missing.length) {
   logger.error(`Missing required environment variables: ${missing.join(', ')}`);
@@ -35,13 +34,11 @@ if (missing.length) {
 
 // ── App setup ─────────────────────────────────────────────────
 const app  = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3001;
 
-// Trust proxy headers (needed when deployed behind Vercel/Railway/Render)
 app.set('trust proxy', 1);
 
 // ── CORS ──────────────────────────────────────────────────────
-// Only the origins in ALLOWED_ORIGINS can call this API
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map(o => o.trim())
@@ -49,7 +46,6 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. curl, Postman during dev)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     logger.warn('CORS blocked request', { origin });
@@ -63,10 +59,9 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── HTTP request logging ──────────────────────────────────────
-// Uses Winston stream so all logs go through the same logger
 app.use(morgan('combined', {
   stream: { write: msg => logger.http(msg.trim()) },
-  skip: (req) => req.path === '/health', // don't log health checks
+  skip: (req) => req.path === '/health',
 }));
 
 // ── Rate limiting ─────────────────────────────────────────────
@@ -83,12 +78,24 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// Stricter rate limit for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many auth attempts. Try again in 15 minutes.' } },
+});
+app.use('/api/auth/', authLimiter);
+
 // ── Health check (no auth needed) ────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV });
 });
 
-// ── API routes (all require the shared API secret) ────────────
+// ── Auth routes (require API secret but NOT a Supabase session) ──
+// Sign-in and sign-up must be accessible before a session exists.
+app.use('/api/auth', requireApiSecret, authRouter);
+
+// ── All other API routes (require API secret + Supabase session) ──
 app.use('/api/', requireApiSecret);
 app.use('/api/agents',        agentsRouter);
 app.use('/api/conversations',  conversationsRouter);
@@ -105,16 +112,15 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // ── Start server ──────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, '0.0.0.0', () => {
   logger.info('────────────────────────────────────────');
   logger.info(`🚀 Agent analytics backend running on port ${PORT}`);
-  logger.info(`   Environment : ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`   Supabase    : ${process.env.SUPABASE_URL}`);
-  logger.info(`   CORS origins: ${allowedOrigins.join(', ') || '(none)'}`);
+  logger.info(`   Environment  : ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`   Supabase     : ${process.env.SUPABASE_URL}`);
+  logger.info(`   CORS origins : ${allowedOrigins.join(', ') || '(none)'}`);
   logger.info('────────────────────────────────────────');
 });
 
-// ── Unhandled rejection safety net ───────────────────────────
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Promise Rejection', { reason: String(reason), promise: String(promise) });
 });

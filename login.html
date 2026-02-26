@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Indoo — Sign In</title>
+  <title>Agent Analytics — Sign In</title>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -136,11 +136,34 @@
 </div>
 
 <script>
+// ── CONFIG ────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
 
+// Must match values in dashboard.html / index.html
+const BACKEND_URL = 'https://agentdashboard-production-5777.up.railway.app';
+const API_SECRET  = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e';
+// ─────────────────────────────────────────────────────────────
+
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── Backend helper (no auth token needed for sign-in/up) ──────
+async function backendAuth(path, body) {
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-secret': API_SECRET,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data?.error?.message || `Error ${res.status}`);
+  }
+  return data;
+}
 
 // Redirect if already logged in, else show page
 sb.auth.getSession().then(({ data: { session } }) => {
@@ -168,38 +191,52 @@ function hideMsg() {
   document.getElementById('msg').className = 'msg';
 }
 
+// ── SIGN IN (via backend) ─────────────────────────────────────
 async function signIn() {
   const email = document.getElementById('si-email').value.trim();
   const pass  = document.getElementById('si-pass').value;
   if (!email || !pass) { showMsg('Please fill in all fields'); return; }
+
   const btn = document.getElementById('btnSignin');
   btn.disabled = true; btn.textContent = 'Signing in…';
-  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if (error) {
-    showMsg(error.message); btn.disabled = false; btn.textContent = 'Sign In →';
-  } else {
+
+  try {
+    const result = await backendAuth('/api/auth/signin', { email, password: pass });
+    const { accessToken, refreshToken } = result.data;
+
+    // Restore the Supabase session client-side from the tokens the backend returned
+    await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+
     window.location.href = 'index.html';
+  } catch (err) {
+    showMsg(err.message || 'Sign in failed. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Sign In →';
   }
 }
 
+// ── SIGN UP (via backend) ─────────────────────────────────────
 async function signUp() {
   const name  = document.getElementById('su-name').value.trim();
   const email = document.getElementById('su-email').value.trim();
   const pass  = document.getElementById('su-pass').value;
   if (!name || !email || !pass) { showMsg('Please fill in all fields'); return; }
   if (pass.length < 8) { showMsg('Password must be at least 8 characters'); return; }
+
   const btn = document.getElementById('btnSignup');
   btn.disabled = true; btn.textContent = 'Creating account…';
-  const { data, error } = await sb.auth.signUp({
-    email, password: pass,
-    options: { data: { full_name: name } }
-  });
-  if (error) {
-    showMsg(error.message); btn.disabled = false; btn.textContent = 'Create Account →';
-  } else {
-    showMsg('Account created! Check your email to confirm, then sign in.', 'success');
-    btn.disabled = false; btn.textContent = 'Create Account →';
+
+  try {
+    await backendAuth('/api/auth/signup', { email, password: pass, full_name: name });
+    showMsg('Account created! A welcome email has been sent. Sign in below. 🎉', 'success');
+    btn.disabled = false;
+    btn.textContent = 'Create Account →';
     switchTab('signin');
+    document.getElementById('si-email').value = email;
+  } catch (err) {
+    showMsg(err.message || 'Failed to create account. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Create Account →';
   }
 }
 
