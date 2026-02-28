@@ -228,7 +228,7 @@ async function signUp() {
 
   try {
     await backendAuth('/api/auth/signup', { email, password: pass, full_name: name });
-    showMsg('Account created! A welcome email has been sent. Sign in below. 🎉', 'success');
+    showMsg('Account created! Sign in below. 🎉', 'success');
     btn.disabled = false;
     btn.textContent = 'Create Account →';
     switchTab('signin');

@@ -165,8 +165,8 @@ function buildRow(agentDbId, agentElId, listItem, detail) {
     transcript:      tr.length ? tr : [],
     metadata:        Object.keys(meta).length ? meta : {},
     // Cost fields — pulled from charging object
-    cost:            meta.cost      != null ? Number(charging.cost)      : null,
-    llm_cost:        charging.llm_charge  != null ? Number(charging.llm_cost)  : null,
+    cost:            detail?.metadata?.cost    != null ? Number(detail.metadata.cost)   : null,
+    llm_cost:        charging.llm_charge  != null ? Number(charging.llm_charge)  : null,
     llm_price:       charging.llm_price != null ? Number(charging.llm_price) : null,
     synced_at:       new Date().toISOString(),
   };
