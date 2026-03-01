@@ -227,13 +227,13 @@ function buildRow(agentDbId, agentElId, listItem, detail) {
   const tr       = detail?.transcript   || [];
 
   // ── Token extraction ──────────────────────────────────────
-  // Tokens live inside metadata.charging.llm_usage
-  const llmUsage = charging?.llm_usage || {};
-  const irrevGen = llmUsage?.irreversible_generation?.model_usage || {};
-  const initGen  = llmUsage?.initiated_generation?.model_usage    || {};
+  // model_usage is keyed by model name (e.g. 'gpt-4.1-nano') — must use Object.values()[0]
+  // Use irreversible_generation only — initiated_generation duplicates the same counts
+  const llmUsage   = charging?.llm_usage || {};
+  const irrevModel = Object.values(llmUsage?.irreversible_generation?.model_usage || {})[0] || {};
 
-  const tokensIn  = (irrevGen?.input?.tokens        || 0) + (initGen?.input?.tokens        || 0);
-  const tokensOut = (irrevGen?.output_total?.tokens  || 0) + (initGen?.output_total?.tokens  || 0);
+  const tokensIn  = irrevModel?.input?.tokens        || 0;
+  const tokensOut = irrevModel?.output_total?.tokens || 0;
 
   // ── Analysis extraction ───────────────────────────────────
   // detail.analysis contains evaluation criteria, data collection, and transcript summary

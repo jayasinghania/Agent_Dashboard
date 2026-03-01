@@ -110,12 +110,12 @@
       <div class="sc-sub">per conversation</div>
     </div>
     <div class="stat-card" style="animation-delay:200ms">
-      <div class="sc-label">Total LLM Cost</div>
+      <div class="sc-label">Total LLM Credits</div>
       <div class="sc-val" id="sv5">—</div>
-      <div class="sc-sub" id="sv5sub">USD from API</div>
+      <div class="sc-sub" id="sv5sub">ElevenLabs credits</div>
     </div>
     <div class="stat-card" style="animation-delay:250ms">
-      <div class="sc-label">Avg LLM Cost</div>
+      <div class="sc-label">Avg LLM Credits</div>
       <div class="sc-val" id="sv6">—</div>
       <div class="sc-sub">per session</div>
     </div>
@@ -129,7 +129,7 @@
       </div>
       <div class="legend">
         <div class="leg-item"><div class="leg-dot" style="background:var(--lav)"></div>Sessions</div>
-        <div class="leg-item" id="llmLegend" style="display:none"><div class="leg-dot" style="background:var(--peach)"></div>LLM Cost ($)</div>
+        <div class="leg-item" id="llmLegend" style="display:none"><div class="leg-dot" style="background:var(--peach)"></div>LLM Credits</div>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
@@ -274,11 +274,12 @@ function rowToTokens(row) {
     const charging = meta?.charging || {};
     const llmUsage = charging?.llm_usage || {};
 
-    const irrevGen = llmUsage?.irreversible_generation?.model_usage || {};
-    const initGen  = llmUsage?.initiated_generation?.model_usage    || {};
+    // model_usage is keyed by model name (e.g. 'gpt-4.1-nano') — must use Object.values()[0]
+    // Use irreversible_generation only — initiated_generation has the same counts (avoid double-counting)
+    const irrevModel = Object.values(llmUsage?.irreversible_generation?.model_usage || {})[0] || {};
 
-    const input  = (irrevGen?.input?.tokens        || 0) + (initGen?.input?.tokens        || 0);
-    const output = (irrevGen?.output_total?.tokens  || 0) + (initGen?.output_total?.tokens  || 0);
+    const input  = irrevModel?.input?.tokens        || 0;
+    const output = irrevModel?.output_total?.tokens || 0;
 
     if (!input && !output) return null;
     return { input, output, total: input + output };
@@ -345,12 +346,10 @@ function extractUserName(row) {
 
 // ── FORMAT HELPERS ────────────────────────────────────────────
 const fmtCost = c => {
+  // ElevenLabs costs are in credits (integers like 13, 73, 118) — not dollars
   if (c === null || c === undefined) return null;
-  if (c === 0) return '$0.00';
-  if (c < 0.000001) return '<$0.000001';
-  if (c < 0.001)    return `$${c.toFixed(6)}`;
-  if (c < 0.01)     return `$${c.toFixed(5)}`;
-  return `$${c.toFixed(4)}`;
+  if (c === 0) return '0 cr';
+  return `${Math.round(c)} cr`;
 };
 const fmtTokens = n => {
   if (!n && n !== 0) return '—';
@@ -537,7 +536,7 @@ function renderOverview() {
   }
 
   document.getElementById('sv5').textContent    = hasLLM ? (fmtCost(totLLM) || '—') : '—';
-  document.getElementById('sv5sub').textContent = hasLLM ? 'USD from API' : 'sync again to get cost data';
+  document.getElementById('sv5sub').textContent = hasLLM ? 'ElevenLabs credits' : 'sync again to get credit data';
   document.getElementById('sv6').textContent    = avgLLM !== null ? (fmtCost(avgLLM) || '—') : '—';
   document.getElementById('llmLegend').style.display = hasLLM ? 'flex' : 'none';
 
@@ -574,7 +573,7 @@ function renderChart(hasLLM) {
           pointRadius:4, pointHoverRadius:6, tension:0.35, fill:true, yAxisID:'y',
         },
         ...(hasLLM ? [{
-          label:'LLM Cost ($)', data:llmVs,
+          label:'LLM Credits', data:llmVs,
           borderColor:'#ff8c6b', backgroundColor:'rgba(255,140,107,0.07)',
           borderWidth:2, pointBackgroundColor:'#ff8c6b',
           pointRadius:4, pointHoverRadius:6, tension:0.35, fill:true,
@@ -592,8 +591,8 @@ function renderChart(hasLLM) {
           titleColor:'#2d2926', bodyColor:'#6b6560', padding:12, cornerRadius:10,
           titleFont:{family:'Nunito',weight:'800',size:12},
           bodyFont:{family:'Nunito',weight:'600',size:11},
-          callbacks:{label:ctx=>ctx.dataset.label==='LLM Cost ($)'
-            ? `  LLM Cost: $${ctx.parsed.y.toFixed(5)}`
+          callbacks:{label:ctx=>ctx.dataset.label==='LLM Credits'
+            ? `  LLM Credits: ${Math.round(ctx.parsed.y)}`
             : `  Sessions: ${ctx.parsed.y}`},
         },
       },
@@ -745,8 +744,8 @@ function renderTranscript(row, userName) {
     { label:'Date',            value: row.start_time_unix ? fmtDate(row.start_time_unix) : '—' },
     { label:'Time',            value: row.start_time_unix ? fmtTime(row.start_time_unix) : '—' },
     { label:'Duration',        value: fmtDur(row.duration_secs) },
-    { label:'LLM Charge',      value: row.llm_cost != null ? (fmtCost(Number(row.llm_cost)) || '—') : (cost?.label === 'LLM' ? fmtCost(cost.cost) : '—') },
-    { label:'Total Cost',      value: row.cost     != null ? (fmtCost(Number(row.cost))     || '—') : (cost?.label === 'total' ? fmtCost(cost.cost) : '—') },
+    { label:'LLM Credits',      value: row.llm_cost != null ? (fmtCost(Number(row.llm_cost)) || '—') : (cost?.label === 'LLM' ? fmtCost(cost.cost) : '—') },
+    { label:'Total Credits',      value: row.cost     != null ? (fmtCost(Number(row.cost))     || '—') : (cost?.label === 'total' ? fmtCost(cost.cost) : '—') },
     { label:'Tokens In',       value: tok ? fmtTokens(tok.input)  : '—' },
     { label:'Tokens Out',      value: tok ? fmtTokens(tok.output) : '—' },
     { label:'Total Tokens',    value: tok ? fmtTokens(tok.total)  : '—' },
