@@ -110,12 +110,12 @@
       <div class="sc-sub">per conversation</div>
     </div>
     <div class="stat-card" style="animation-delay:200ms">
-      <div class="sc-label">Total LLM Credits</div>
+      <div class="sc-label">Total LLM Cost</div>
       <div class="sc-val" id="sv5">—</div>
       <div class="sc-sub" id="sv5sub">ElevenLabs credits</div>
     </div>
     <div class="stat-card" style="animation-delay:250ms">
-      <div class="sc-label">Avg LLM Credits</div>
+      <div class="sc-label">Avg LLM Cost</div>
       <div class="sc-val" id="sv6">—</div>
       <div class="sc-sub">per session</div>
     </div>
@@ -289,17 +289,14 @@ function rowToTokens(row) {
 }
 
 // ── COST EXTRACTION ───────────────────────────────────────────
-// Priority:
-//   1. row.llm_cost  (charging.llm_charge — most specific, LLM only)
-//   2. row.cost      (metadata.cost — total conversation cost)
-//   3. metadata.charging.llm_charge — fallback if DB columns are null (old rows)
-//   4. metadata.cost — fallback for old rows
+// ElevenLabs API fields:
+//   row.llm_cost  = LLM credits (integer, e.g. 13)
+//   row.cost      = total credits (integer, e.g. 73)
+//   row.llm_price = actual dollar cost (float, e.g. 0.00251)  ← real money
 function rowToCost(row) {
-  // DB columns (set by syncService.buildRow on new syncs)
+  // Returns credits for session cards / chart
   if (row.llm_cost != null && Number(row.llm_cost) > 0) return { cost: Number(row.llm_cost), label: 'LLM' };
   if (row.cost     != null && Number(row.cost)     > 0) return { cost: Number(row.cost),     label: 'total' };
-
-  // Fallback: read directly from stored metadata (covers rows synced before fix)
   try {
     const meta     = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
     const charging = meta?.charging || {};
@@ -308,7 +305,17 @@ function rowToCost(row) {
     if (meta?.cost != null && Number(meta.cost) > 0)
       return { cost: Number(meta.cost), label: 'total' };
   } catch {}
+  return null;
+}
 
+function rowToLLMDollars(row) {
+  // Returns the real dollar cost from llm_price (charging.llm_price in the API)
+  if (row.llm_price != null && Number(row.llm_price) > 0) return Number(row.llm_price);
+  try {
+    const meta     = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
+    const charging = meta?.charging || {};
+    if (charging?.llm_price != null && Number(charging.llm_price) > 0) return Number(charging.llm_price);
+  } catch {}
   return null;
 }
 
@@ -346,10 +353,17 @@ function extractUserName(row) {
 
 // ── FORMAT HELPERS ────────────────────────────────────────────
 const fmtCost = c => {
-  // ElevenLabs costs are in credits (integers like 13, 73, 118) — not dollars
   if (c === null || c === undefined) return null;
   if (c === 0) return '0 cr';
   return `${Math.round(c)} cr`;
+};
+const fmtDollars = c => {
+  if (c === null || c === undefined) return null;
+  if (c === 0) return '$0.00';
+  if (c < 0.00001) return `${c.toFixed(6)}`;
+  if (c < 0.001)   return `${c.toFixed(5)}`;
+  if (c < 0.01)    return `${c.toFixed(4)}`;
+  return `${c.toFixed(2)}`;
 };
 const fmtTokens = n => {
   if (!n && n !== 0) return '—';
@@ -517,10 +531,16 @@ function renderOverview() {
   const avgTokens  = tokensList.length ? Math.round(totTokens / tokensList.length) : 0;
   const hasTokens  = tokensList.length > 0;
 
-  const sessionCosts = allConvs.map(rowToCost).filter(Boolean);
+  const sessionCosts  = allConvs.map(rowToCost).filter(Boolean);
   const totLLM  = sessionCosts.reduce((a, s) => a + s.cost, 0);
   const avgLLM  = sessionCosts.length ? totLLM / sessionCosts.length : null;
   const hasLLM  = sessionCosts.length > 0;
+
+  // Real dollar costs from llm_price
+  const dollarCosts = allConvs.map(rowToLLMDollars).filter(v => v !== null);
+  const totDollars  = dollarCosts.reduce((a, v) => a + v, 0);
+  const avgDollars  = dollarCosts.length ? totDollars / dollarCosts.length : null;
+  const hasDollars  = dollarCosts.length > 0;
 
   document.getElementById('sv1').textContent = n || '0';
   document.getElementById('sv2').textContent = fmtDur(avgD);
@@ -535,9 +555,11 @@ function renderOverview() {
     document.getElementById('sv4').textContent    = '—';
   }
 
-  document.getElementById('sv5').textContent    = hasLLM ? (fmtCost(totLLM) || '—') : '—';
-  document.getElementById('sv5sub').textContent = hasLLM ? 'ElevenLabs credits' : 'sync again to get credit data';
-  document.getElementById('sv6').textContent    = avgLLM !== null ? (fmtCost(avgLLM) || '—') : '—';
+  // Show real dollars as primary, credits as subtitle
+  document.getElementById('sv5').textContent    = hasDollars ? (fmtDollars(totDollars) || '—') : (hasLLM ? fmtCost(totLLM) : '—');
+  document.getElementById('sv5sub').textContent = hasDollars ? `${Math.round(totLLM)} cr total` : (hasLLM ? 'ElevenLabs credits' : 'sync again to get cost data');
+  document.getElementById('sv6').textContent    = hasDollars ? (fmtDollars(avgDollars) || '—') : (avgLLM !== null ? fmtCost(avgLLM) : '—');
+  document.getElementById('sv6sub') && (document.getElementById('sv6sub').textContent = hasDollars ? `${Math.round(avgLLM || 0)} cr avg` : 'per session');
   document.getElementById('llmLegend').style.display = hasLLM ? 'flex' : 'none';
 
   renderChart(hasLLM);
@@ -735,8 +757,9 @@ function renderTranscript(row, userName) {
   const tr    = rowToTranscript(row);
   const dName = userName || extractUserName(row) || 'User';
   const ini   = initials(dName);
-  const tok   = rowToTokens(row);
-  const cost  = rowToCost(row);
+  const tok     = rowToTokens(row);
+  const cost    = rowToCost(row);
+  const dollars = rowToLLMDollars(row);
 
   const ipRows = [
     { label:'Conversation ID', value: row.conversation_id,  mono:true, small:true },
@@ -744,8 +767,9 @@ function renderTranscript(row, userName) {
     { label:'Date',            value: row.start_time_unix ? fmtDate(row.start_time_unix) : '—' },
     { label:'Time',            value: row.start_time_unix ? fmtTime(row.start_time_unix) : '—' },
     { label:'Duration',        value: fmtDur(row.duration_secs) },
-    { label:'LLM Credits',      value: row.llm_cost != null ? (fmtCost(Number(row.llm_cost)) || '—') : (cost?.label === 'LLM' ? fmtCost(cost.cost) : '—') },
-    { label:'Total Credits',      value: row.cost     != null ? (fmtCost(Number(row.cost))     || '—') : (cost?.label === 'total' ? fmtCost(cost.cost) : '—') },
+    { label:'LLM Cost',        value: dollars != null ? fmtDollars(dollars) : '—' },
+    { label:'LLM Credits',     value: row.llm_cost != null ? (fmtCost(Number(row.llm_cost)) || '—') : (cost?.label === 'LLM' ? fmtCost(cost.cost) : '—') },
+    { label:'Total Credits',   value: row.cost     != null ? (fmtCost(Number(row.cost))     || '—') : (cost?.label === 'total' ? fmtCost(cost.cost) : '—') },
     { label:'Tokens In',       value: tok ? fmtTokens(tok.input)  : '—' },
     { label:'Tokens Out',      value: tok ? fmtTokens(tok.output) : '—' },
     { label:'Total Tokens',    value: tok ? fmtTokens(tok.total)  : '—' },
