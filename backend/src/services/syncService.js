@@ -2,19 +2,32 @@
 // ─────────────────────────────────────────────────────────────
 //  DB TABLE: public.conversations
 //  Columns:
-//    conversation_id  text unique
-//    agent_db_id      uuid
-//    agent_el_id      text
-//    status           text
-//    start_time_unix  bigint
-//    duration_secs    integer
-//    user_name        text
-//    transcript       jsonb
-//    metadata         jsonb   ← full raw detail from ElevenLabs
-//    cost             numeric ← detail.metadata.cost
-//    llm_cost         numeric ← detail.metadata.charging.llm_charge
-//    llm_price        numeric ← detail.metadata.charging.llm_price
-//    synced_at        timestamptz
+//    conversation_id          text unique
+//    agent_db_id              uuid
+//    agent_el_id              text
+//    status                   text
+//    start_time_unix          bigint
+//    duration_secs            integer
+//    user_name                text
+//    transcript               jsonb
+//    metadata                 jsonb      ← full raw detail from ElevenLabs
+//    cost                     numeric    ← detail.metadata.cost
+//    llm_cost                 numeric    ← detail.metadata.charging.llm_charge
+//    llm_price                numeric    ← detail.metadata.charging.llm_price
+//    transcript_summary       text       ← detail.analysis.transcript_summary
+//    confidence_score         jsonb      ← detail.analysis.evaluation_criteria_results.confidence_score
+//    knowledge_coverage_score jsonb      ← detail.analysis.evaluation_criteria_results.knowledge_coverage_score
+//    primary_question         text       ← detail.analysis.data_collection_results.primary_question.value
+//    question_category        text       ← detail.analysis.data_collection_results.question_category.value
+//    synced_at                timestamptz
+//
+//  REQUIRED SUPABASE MIGRATION (run once):
+//    ALTER TABLE conversations
+//      ADD COLUMN IF NOT EXISTS transcript_summary       text,
+//      ADD COLUMN IF NOT EXISTS confidence_score         jsonb,
+//      ADD COLUMN IF NOT EXISTS knowledge_coverage_score jsonb,
+//      ADD COLUMN IF NOT EXISTS primary_question         text,
+//      ADD COLUMN IF NOT EXISTS question_category        text;
 // ─────────────────────────────────────────────────────────────
 
 const supabase   = require('../utils/supabase');
@@ -104,12 +117,17 @@ async function syncConversations(agentDbId, agentElId, apiKey) {
   if (rows.length > 0) {
     const sample = rows[0];
     logger.info('Sample row (first conversation):', {
-      conversation_id: sample.conversation_id,
-      cost:            sample.cost,
-      llm_cost:        sample.llm_cost,
-      llm_price:       sample.llm_price,
-      has_transcript:  sample.transcript?.length > 0,
-      has_metadata:    Object.keys(sample.metadata || {}).length > 0,
+      conversation_id:          sample.conversation_id,
+      cost:                     sample.cost,
+      llm_cost:                 sample.llm_cost,
+      llm_price:                sample.llm_price,
+      has_transcript:           sample.transcript?.length > 0,
+      has_metadata:             Object.keys(sample.metadata || {}).length > 0,
+      transcript_summary:       sample.transcript_summary ? 'present' : null,
+      confidence_score:         sample.confidence_score   ? sample.confidence_score.result : null,
+      knowledge_coverage_score: sample.knowledge_coverage_score ? sample.knowledge_coverage_score.result : null,
+      primary_question:         sample.primary_question,
+      question_category:        sample.question_category,
     });
   }
 
@@ -172,6 +190,31 @@ async function syncConversations(agentDbId, agentElId, apiKey) {
  *       }
  *     }
  *   },
+ *   analysis: {
+ *     transcript_summary: "User asked about...",
+ *     evaluation_criteria_results: {
+ *       confidence_score: {
+ *         criteria_id:  "confidence_score",
+ *         result:       "success" | "failure" | "unknown",
+ *         rationale:    "The agent responded confidently...",
+ *       },
+ *       knowledge_coverage_score: {
+ *         criteria_id:  "knowledge_coverage_score",
+ *         result:       "success" | "failure" | "unknown",
+ *         rationale:    "The agent covered...",
+ *       },
+ *     },
+ *     data_collection_results: {
+ *       primary_question: {
+ *         data_collection_id: "primary_question",
+ *         value: "What is the leave policy?",
+ *       },
+ *       question_category: {
+ *         data_collection_id: "question_category",
+ *         value: "Company",
+ *       },
+ *     },
+ *   },
  *   conversation_initiation_client_data: {
  *     dynamic_variables: { user_name: "..." }
  *   }
@@ -192,6 +235,23 @@ function buildRow(agentDbId, agentElId, listItem, detail) {
   const tokensIn  = (irrevGen?.input?.tokens        || 0) + (initGen?.input?.tokens        || 0);
   const tokensOut = (irrevGen?.output_total?.tokens  || 0) + (initGen?.output_total?.tokens  || 0);
 
+  // ── Analysis extraction ───────────────────────────────────
+  // detail.analysis contains evaluation criteria, data collection, and transcript summary
+  const analysis    = detail?.analysis || {};
+  const evalResults = analysis?.evaluation_criteria_results || {};
+  const dataResults = analysis?.data_collection_results     || {};
+
+  // Evaluation criteria — stored as jsonb { result, rationale }
+  const confidenceScore         = evalResults?.confidence_score         || null;
+  const knowledgeCoverageScore  = evalResults?.knowledge_coverage_score || null;
+
+  // Data collection — stored as plain text values
+  const primaryQuestion  = dataResults?.primary_question?.value  ?? null;
+  const questionCategory = dataResults?.question_category?.value ?? null;
+
+  // Transcript summary — stored as text
+  const transcriptSummary = analysis?.transcript_summary ?? null;
+
   logger.debug('buildRow charging data', {
     conversation_id: listItem.conversation_id,
     raw_cost:        meta?.cost,
@@ -201,6 +261,9 @@ function buildRow(agentDbId, agentElId, listItem, detail) {
     tokens_out:      tokensOut,
     charging_keys:   Object.keys(charging),
     meta_keys:       Object.keys(meta),
+    has_analysis:    Object.keys(analysis).length > 0,
+    has_eval:        Object.keys(evalResults).length > 0,
+    has_data_coll:   Object.keys(dataResults).length > 0,
   });
 
   return {
@@ -217,12 +280,17 @@ function buildRow(agentDbId, agentElId, listItem, detail) {
     metadata:   Object.keys(meta).length ? meta : {},
 
     // ── Cost fields ───────────────────────────────────────
-    // cost     = total cost of the conversation (metadata.cost)
-    // llm_cost = just the LLM charge (metadata.charging.llm_charge)
-    // llm_price = the unit price used (metadata.charging.llm_price)
-    cost:      meta?.cost        != null ? Number(meta.cost)            : null,
-    llm_cost:  charging?.llm_charge != null ? Number(charging.llm_charge) : null,
-    llm_price: charging?.llm_price  != null ? Number(charging.llm_price)  : null,
+    cost:      meta?.cost           != null ? Number(meta.cost)            : null,
+    llm_cost:  charging?.llm_charge != null ? Number(charging.llm_charge)  : null,
+    llm_price: charging?.llm_price  != null ? Number(charging.llm_price)   : null,
+
+    // ── Analysis fields ───────────────────────────────────
+    // Stored in DB only — not displayed on dashboard
+    transcript_summary:       transcriptSummary,
+    confidence_score:         confidenceScore,         // jsonb: { result, rationale }
+    knowledge_coverage_score: knowledgeCoverageScore,  // jsonb: { result, rationale }
+    primary_question:         primaryQuestion,          // text
+    question_category:        questionCategory,         // text
 
     synced_at: new Date().toISOString(),
   };
