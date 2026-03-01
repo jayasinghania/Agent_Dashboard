@@ -40,6 +40,15 @@
     .sync-btn.syncing{animation:syncPulse 1s ease-in-out infinite;}
     @keyframes syncPulse{0%,100%{opacity:1}50%{opacity:.5}}
 
+    .resync-btn{
+      display:flex;align-items:center;gap:6px;padding:7px 16px;
+      background:var(--amber-l);border:1.5px solid var(--amber-m);
+      border-radius:50px;font-family:'Nunito',sans-serif;
+      font-size:.78rem;font-weight:700;color:#92400e;cursor:pointer;transition:all .15s;
+    }
+    .resync-btn:hover{background:var(--amber);color:#fff;}
+    .resync-btn:disabled{opacity:.5;cursor:not-allowed;}
+
     .sync-status{
       font-size:.65rem;font-weight:700;color:var(--ink3);
       display:flex;align-items:center;gap:5px;
@@ -47,13 +56,6 @@
     .sync-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);}
     .sync-dot.stale{background:var(--amber);}
     .sync-dot.never{background:var(--rose);}
-
-    .backend-notice{
-      background:var(--amber-l);border:1.5px solid var(--amber-m);
-      border-radius:12px;padding:12px 16px;margin:16px 0;
-      font-size:.8rem;font-weight:600;color:#92400e;
-      display:flex;align-items:center;gap:10px;
-    }
   </style>
 </head>
 <body>
@@ -72,6 +74,9 @@
       <div class="sync-dot never" id="syncDot"></div>
       <span id="syncLabel">Never synced</span>
     </div>
+    <!-- Full re-sync: wipes DB cache and re-fetches everything fresh -->
+    <button class="resync-btn" id="resyncBtn" onclick="triggerFullResync()" title="Wipe cache and re-fetch all conversations (fixes missing cost/token data)">♻️ Re-sync All</button>
+    <!-- Delta sync: only fetches new conversations since last sync -->
     <button class="sync-btn" id="syncBtn" onclick="triggerSync()">🔄 Sync Now</button>
   </div>
   <div class="tab-bar" style="margin-left:12px;">
@@ -179,7 +184,6 @@
 // ── CONFIG ────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
-
 const BACKEND_URL = 'https://agentdashboard-production-5777.up.railway.app';
 const API_SECRET  = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e';
 // ─────────────────────────────────────────────────────────────
@@ -223,9 +227,7 @@ async function backendFetch(path, options = {}) {
     },
   });
   const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data?.error?.message || `Backend error ${res.status}`);
-  }
+  if (!res.ok || !data.success) throw new Error(data?.error?.message || `Backend error ${res.status}`);
   return data;
 }
 
@@ -262,27 +264,50 @@ function dayLabelShort(u) {
 }
 
 // ── TOKEN EXTRACTION ──────────────────────────────────────────
-// Path: metadata -> charging -> llm_usage -> {irreversible_generation,initiated_generation} -> model_usage
+// Path: row.metadata -> charging -> llm_usage
+//   -> irreversible_generation -> model_usage -> input.tokens / output_total.tokens
+//   -> initiated_generation    -> model_usage -> input.tokens / output_total.tokens
 function rowToTokens(row) {
   if (!row?.metadata) return null;
-  const meta     = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
-  const charging = meta?.charging || {};
-  const llm      = charging?.llm_usage || {};
-  const gen1     = llm?.irreversible_generation?.model_usage || {};
-  const gen2     = llm?.initiated_generation?.model_usage    || {};
-  const input    = (gen1?.input?.tokens        || 0) + (gen2?.input?.tokens        || 0);
-  const output   = (gen1?.output_total?.tokens || 0) + (gen2?.output_total?.tokens || 0);
-  if (!input && !output) return null;
-  return { input, output, total: input + output };
+  try {
+    const meta     = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+    const charging = meta?.charging || {};
+    const llmUsage = charging?.llm_usage || {};
+
+    const irrevGen = llmUsage?.irreversible_generation?.model_usage || {};
+    const initGen  = llmUsage?.initiated_generation?.model_usage    || {};
+
+    const input  = (irrevGen?.input?.tokens        || 0) + (initGen?.input?.tokens        || 0);
+    const output = (irrevGen?.output_total?.tokens  || 0) + (initGen?.output_total?.tokens  || 0);
+
+    if (!input && !output) return null;
+    return { input, output, total: input + output };
+  } catch {
+    return null;
+  }
 }
 
 // ── COST EXTRACTION ───────────────────────────────────────────
-// llm_cost  = charging.llm_charge  (stored in DB column llm_cost)
-// cost      = metadata.cost        (stored in DB column cost)
-// Prefer llm_cost (more specific), fall back to cost (total)
+// Priority:
+//   1. row.llm_cost  (charging.llm_charge — most specific, LLM only)
+//   2. row.cost      (metadata.cost — total conversation cost)
+//   3. metadata.charging.llm_charge — fallback if DB columns are null (old rows)
+//   4. metadata.cost — fallback for old rows
 function rowToCost(row) {
-  if (row.llm_cost != null) return { cost: Number(row.llm_cost), label: 'LLM' };
-  if (row.cost     != null) return { cost: Number(row.cost),     label: 'total' };
+  // DB columns (set by syncService.buildRow on new syncs)
+  if (row.llm_cost != null && Number(row.llm_cost) > 0) return { cost: Number(row.llm_cost), label: 'LLM' };
+  if (row.cost     != null && Number(row.cost)     > 0) return { cost: Number(row.cost),     label: 'total' };
+
+  // Fallback: read directly from stored metadata (covers rows synced before fix)
+  try {
+    const meta     = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
+    const charging = meta?.charging || {};
+    if (charging?.llm_charge != null && Number(charging.llm_charge) > 0)
+      return { cost: Number(charging.llm_charge), label: 'LLM' };
+    if (meta?.cost != null && Number(meta.cost) > 0)
+      return { cost: Number(meta.cost), label: 'total' };
+  } catch {}
+
   return null;
 }
 
@@ -324,6 +349,7 @@ const fmtCost = c => {
   if (c === 0) return '$0.00';
   if (c < 0.000001) return '<$0.000001';
   if (c < 0.001)    return `$${c.toFixed(6)}`;
+  if (c < 0.01)     return `$${c.toFixed(5)}`;
   return `$${c.toFixed(4)}`;
 };
 const fmtTokens = n => {
@@ -337,9 +363,7 @@ const fmtTokens = n => {
 async function triggerSync() {
   if (!agentDbId) return;
   const btn = document.getElementById('syncBtn');
-  btn.disabled = true;
-  btn.classList.add('syncing');
-  btn.textContent = '🔄 Syncing…';
+  btn.disabled = true; btn.classList.add('syncing'); btn.textContent = '🔄 Syncing…';
   try {
     const result = await backendFetch(`/api/conversations/sync/${agentDbId}`, { method: 'POST' });
     const { newCount, lastSyncedAt } = result.data;
@@ -352,8 +376,41 @@ async function triggerSync() {
     setTimeout(() => { btn.textContent = '🔄 Sync Now'; }, 3000);
     console.error('[Dashboard] Sync failed:', err.message);
   } finally {
+    btn.disabled = false; btn.classList.remove('syncing');
+  }
+}
+
+// Full re-sync: deletes ALL cached conversations for this agent
+// then syncs everything fresh from ElevenLabs.
+// This is needed to fix old rows that were stored without cost/token data.
+async function triggerFullResync() {
+  if (!agentDbId) return;
+  if (!confirm('This will delete all cached conversations and re-fetch everything from ElevenLabs.\n\nThis fixes missing cost and token data. Continue?')) return;
+
+  const btn = document.getElementById('resyncBtn');
+  btn.disabled = true; btn.textContent = '♻️ Wiping cache…';
+
+  try {
+    // Step 1: Delete all cached conversations for this agent via backend
+    await backendFetch(`/api/conversations/reset/${agentDbId}`, { method: 'DELETE' });
+
+    btn.textContent = '♻️ Re-syncing…';
+
+    // Step 2: Full sync (no checkpoint — fetches everything)
+    const result = await backendFetch(`/api/conversations/sync/${agentDbId}`, { method: 'POST' });
+    const { newCount, lastSyncedAt } = result.data;
+
+    btn.textContent = `✓ ${newCount} fetched`;
+    setTimeout(() => { btn.textContent = '♻️ Re-sync All'; }, 4000);
+    updateSyncStatus(lastSyncedAt);
+    await loadConversations();
+  } catch (err) {
+    btn.textContent = '❌ Failed';
+    setTimeout(() => { btn.textContent = '♻️ Re-sync All'; }, 3000);
+    console.error('[Dashboard] Full re-sync failed:', err.message);
+    alert('Re-sync failed: ' + err.message);
+  } finally {
     btn.disabled = false;
-    btn.classList.remove('syncing');
   }
 }
 
@@ -361,9 +418,7 @@ function updateSyncStatus(lastSyncedAt) {
   const dot   = document.getElementById('syncDot');
   const label = document.getElementById('syncLabel');
   if (!lastSyncedAt) {
-    dot.className = 'sync-dot never';
-    label.textContent = 'Never synced';
-    return;
+    dot.className = 'sync-dot never'; label.textContent = 'Never synced'; return;
   }
   const mins = Math.floor((Date.now() - new Date(lastSyncedAt).getTime()) / 60000);
   dot.className = mins > 60 ? 'sync-dot stale' : 'sync-dot';
@@ -432,8 +487,7 @@ function setLoadingState(msg) {
 
 // ── USER MAP ──────────────────────────────────────────────────
 function buildUserMap() {
-  userMap = {};
-  userLatestConv = {};
+  userMap = {}; userLatestConv = {};
   for (const row of allConvs) {
     const name = extractUserName(row) || 'Unknown User';
     if (!userMap[name]) userMap[name] = [];
@@ -446,8 +500,7 @@ function buildUserMap() {
 function sortedUserNames() {
   return Object.keys(userMap).sort((a, b) => {
     const diff = (userLatestConv[b] || 0) - (userLatestConv[a] || 0);
-    if (diff !== 0) return diff;
-    return a.localeCompare(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
   });
 }
 
@@ -455,8 +508,8 @@ function sortedUserNames() {
 function renderOverview() {
   const n = allConvs.length;
 
-  const durs  = allConvs.map(r => r.duration_secs).filter(Boolean);
-  const avgD  = durs.length ? Math.round(durs.reduce((a,b)=>a+b,0) / durs.length) : 0;
+  const durs = allConvs.map(r => r.duration_secs).filter(Boolean);
+  const avgD = durs.length ? Math.round(durs.reduce((a,b)=>a+b,0) / durs.length) : 0;
 
   const tokensList = allConvs.map(rowToTokens).filter(Boolean);
   const totInput   = tokensList.reduce((a,t) => a + t.input,  0);
@@ -479,12 +532,12 @@ function renderOverview() {
     document.getElementById('sv4').textContent    = fmtTokens(avgTokens);
   } else {
     document.getElementById('sv3').textContent    = '—';
-    document.getElementById('sv3sub').textContent = 'no token data';
+    document.getElementById('sv3sub').textContent = 'sync again to get token data';
     document.getElementById('sv4').textContent    = '—';
   }
 
   document.getElementById('sv5').textContent    = hasLLM ? (fmtCost(totLLM) || '—') : '—';
-  document.getElementById('sv5sub').textContent = hasLLM ? 'USD from API' : 'no cost data';
+  document.getElementById('sv5sub').textContent = hasLLM ? 'USD from API' : 'sync again to get cost data';
   document.getElementById('sv6').textContent    = avgLLM !== null ? (fmtCost(avgLLM) || '—') : '—';
   document.getElementById('llmLegend').style.display = hasLLM ? 'flex' : 'none';
 
@@ -684,16 +737,19 @@ function renderTranscript(row, userName) {
   const dName = userName || extractUserName(row) || 'User';
   const ini   = initials(dName);
   const tok   = rowToTokens(row);
+  const cost  = rowToCost(row);
 
   const ipRows = [
-    { label:'Conversation ID', value: row.conversation_id, mono:true, small:true },
+    { label:'Conversation ID', value: row.conversation_id,  mono:true, small:true },
     { label:'Status',          value: `<span class="sc-stat ${stClass(row.status)}" style="font-size:.65rem">${row.status||'—'}</span>`, html:true },
     { label:'Date',            value: row.start_time_unix ? fmtDate(row.start_time_unix) : '—' },
     { label:'Time',            value: row.start_time_unix ? fmtTime(row.start_time_unix) : '—' },
     { label:'Duration',        value: fmtDur(row.duration_secs) },
-    { label:'LLM Charge',      value: row.llm_cost != null ? (fmtCost(Number(row.llm_cost)) || '—') : '—' },
-    { label:'Total Cost',      value: row.cost     != null ? (fmtCost(Number(row.cost))     || '—') : '—' },
-    { label:'Tokens In / Out', value: tok ? `${fmtTokens(tok.input)} / ${fmtTokens(tok.output)}` : '—' },
+    { label:'LLM Charge',      value: row.llm_cost != null ? (fmtCost(Number(row.llm_cost)) || '—') : (cost?.label === 'LLM' ? fmtCost(cost.cost) : '—') },
+    { label:'Total Cost',      value: row.cost     != null ? (fmtCost(Number(row.cost))     || '—') : (cost?.label === 'total' ? fmtCost(cost.cost) : '—') },
+    { label:'Tokens In',       value: tok ? fmtTokens(tok.input)  : '—' },
+    { label:'Tokens Out',      value: tok ? fmtTokens(tok.output) : '—' },
+    { label:'Total Tokens',    value: tok ? fmtTokens(tok.total)  : '—' },
   ];
 
   document.getElementById('ipBody').innerHTML = `
@@ -719,6 +775,11 @@ function renderTranscript(row, userName) {
           <div class="tr-id">${esc(row.conversation_id)}</div>
         </div>
       </div>
+      ${tok ? `
+      <div class="tr-chips">
+        <div class="tr-chip llm">🔢 ${fmtTokens(tok.input)} in · ${fmtTokens(tok.output)} out</div>
+        ${cost ? `<div class="tr-chip llm">💰 ${fmtCost(cost.cost)}</div>` : ''}
+      </div>` : ''}
     </div>
     <div class="msgs" id="msgsBox"></div>`;
 

@@ -1,34 +1,33 @@
 // src/routes/conversations.js
 // ─────────────────────────────────────────────────────────────
-//  Conversation endpoints:
-//
 //  POST /api/conversations/sync/:agentId
-//    → Syncs new conversations from ElevenLabs into the DB.
-//      Returns how many new ones were saved.
+//    → Syncs new conversations from ElevenLabs (delta sync).
+//
+//  DELETE /api/conversations/reset/:agentId
+//    → Wipes all cached conversations for an agent so a full
+//      re-sync can be triggered (admin only).
+//      Use when cost/token data is missing from old syncs.
 //
 //  GET  /api/conversations/:agentId
-//    → Returns all cached conversations for an agent from DB.
-//      Lightning fast — no ElevenLabs call.
+//    → Returns all cached conversations from DB.
 //
 //  GET  /api/conversations/:agentId/:conversationId
-//    → Returns the full detail of a single conversation.
+//    → Returns full detail of one conversation.
 // ─────────────────────────────────────────────────────────────
 
-const express = require('express');
-const router  = express.Router();
+const express  = require('express');
+const router   = express.Router();
 const supabase = require('../utils/supabase');
 const { asyncHandler, Errors } = require('../utils/errors');
 const { requireSupabaseUser } = require('../middleware/auth');
-const syncService  = require('../services/syncService');
+const syncService = require('../services/syncService');
 const logger = require('../utils/logger');
 
-// All conversation routes require an authenticated Supabase user
 router.use(requireSupabaseUser);
 
 // ── Helper: verify user has access to this agent ──────────────
 async function getAgentForUser(agentDbId, user) {
   if (user.role === 'admin') {
-    // Admins can access any agent
     const { data, error } = await supabase
       .from('agents')
       .select('id, name, agent_id, api_key, last_synced_at')
@@ -37,12 +36,11 @@ async function getAgentForUser(agentDbId, user) {
     if (error || !data) throw Errors.notFound('Agent not found.');
     return data;
   } else {
-    // Clients can only access agents assigned to them
     const { data, error } = await supabase
       .from('agent_access')
       .select('agents(id, name, agent_id, api_key, last_synced_at)')
       .eq('user_id', user.id)
-      .eq('agent_id', agentDbId)  // agent_access.agent_id is the FK to agents.id
+      .eq('agent_id', agentDbId)
       .single();
     if (error || !data?.agents) throw Errors.forbidden('You do not have access to this agent.');
     return data.agents;
@@ -51,14 +49,11 @@ async function getAgentForUser(agentDbId, user) {
 
 // ──────────────────────────────────────────────────────────────
 // POST /api/conversations/sync/:agentId
-//
-// Syncs new conversations from ElevenLabs for the given agent.
-// Returns a summary: { newCount, totalCount, lastSyncedAt }
+// Delta sync — only fetches conversations newer than last sync.
 // ──────────────────────────────────────────────────────────────
 router.post('/sync/:agentId', asyncHandler(async (req, res) => {
   const { agentId } = req.params;
 
-  // Only admins can trigger syncs (clients just read cached data)
   if (req.user.role !== 'admin') {
     throw Errors.forbidden('Only admins can trigger conversation syncs.');
   }
@@ -72,8 +67,8 @@ router.post('/sync/:agentId', asyncHandler(async (req, res) => {
   logger.info('Sync triggered', { agentId, agentName: agent.name, userId: req.user.id });
 
   const result = await syncService.syncConversations(
-    agent.id,        // DB UUID
-    agent.agent_id,  // ElevenLabs agent ID
+    agent.id,
+    agent.agent_id,
     agent.api_key
   );
 
@@ -93,10 +88,48 @@ router.post('/sync/:agentId', asyncHandler(async (req, res) => {
 }));
 
 // ──────────────────────────────────────────────────────────────
+// DELETE /api/conversations/reset/:agentId
+// Wipes all cached conversations so a full re-sync can be done.
+// This fixes old rows with missing cost/token data.
+// Admin only.
+// ──────────────────────────────────────────────────────────────
+router.delete('/reset/:agentId', asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+
+  if (req.user.role !== 'admin') {
+    throw Errors.forbidden('Only admins can reset conversation cache.');
+  }
+
+  const agent = await getAgentForUser(agentId, req.user);
+
+  logger.info('Resetting conversation cache', { agentId, agentName: agent.name, userId: req.user.id });
+
+  // Delete all cached conversations for this agent
+  const { error } = await supabase
+    .from('conversations')
+    .delete()
+    .eq('agent_db_id', agent.id);
+
+  if (error) throw Errors.database('Failed to reset conversation cache.', { err: error.message });
+
+  // Also clear last_synced_at so next sync fetches everything
+  await supabase
+    .from('agents')
+    .update({ last_synced_at: null })
+    .eq('id', agent.id);
+
+  logger.info('Cache reset complete', { agentId, agentName: agent.name });
+
+  res.json({
+    success: true,
+    message: `Cache cleared for agent "${agent.name}". Run sync to re-fetch all conversations.`,
+    data: { agentId: agent.id },
+  });
+}));
+
+// ──────────────────────────────────────────────────────────────
 // GET /api/conversations/:agentId
-//
 // Returns all stored conversations for an agent (from DB).
-// Query params: limit, offset
 // ──────────────────────────────────────────────────────────────
 router.get('/:agentId', asyncHandler(async (req, res) => {
   const { agentId } = req.params;
@@ -122,8 +155,7 @@ router.get('/:agentId', asyncHandler(async (req, res) => {
 
 // ──────────────────────────────────────────────────────────────
 // GET /api/conversations/:agentId/:conversationId
-//
-// Returns the full detail of one stored conversation.
+// Returns full detail of one stored conversation.
 // ──────────────────────────────────────────────────────────────
 router.get('/:agentId/:conversationId', asyncHandler(async (req, res) => {
   const { agentId, conversationId } = req.params;
@@ -134,7 +166,7 @@ router.get('/:agentId/:conversationId', asyncHandler(async (req, res) => {
     .from('conversations')
     .select('*')
     .eq('agent_db_id', agent.id)
-    .eq('conversation_id', conversationId)   // conversations.conversation_id = ElevenLabs ID
+    .eq('conversation_id', conversationId)
     .single();
 
   if (error || !data) {

@@ -1,21 +1,19 @@
 // src/services/syncService.js
 // ─────────────────────────────────────────────────────────────
-//  The heart of the caching system.
-//
 //  DB TABLE: public.conversations
-//  Columns that matter:
-//    conversation_id  text unique   ← ElevenLabs conversation ID
-//    agent_db_id      uuid          ← our agents.id
-//    agent_el_id      text          ← ElevenLabs agent ID
+//  Columns:
+//    conversation_id  text unique
+//    agent_db_id      uuid
+//    agent_el_id      text
 //    status           text
-//    start_time_unix  bigint        ← used as the delta-sync checkpoint
+//    start_time_unix  bigint
 //    duration_secs    integer
 //    user_name        text
-//    transcript       jsonb         ← array of { role, message, time_in_call_secs }
-//    metadata         jsonb         ← full raw metadata from ElevenLabs
-//    cost             numeric       ← from charging.cost
-//    llm_cost         numeric       ← from charging.llm_cost
-//    llm_price        numeric       ← from charging.llm_price
+//    transcript       jsonb
+//    metadata         jsonb   ← full raw detail from ElevenLabs
+//    cost             numeric ← detail.metadata.cost
+//    llm_cost         numeric ← detail.metadata.charging.llm_charge
+//    llm_price        numeric ← detail.metadata.charging.llm_price
 //    synced_at        timestamptz
 // ─────────────────────────────────────────────────────────────
 
@@ -31,18 +29,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ─────────────────────────────────────────────────────────────
 /**
  * Main sync function.
- *
- * 1. Finds the newest start_time_unix already stored for this agent.
- * 2. Fetches only conversations newer than that from ElevenLabs.
- * 3. For each new conv, fetches full detail (transcript, charging, etc.).
- * 4. Upserts rows into `conversations`.
- * 5. Updates agents.last_synced_at.
- * 6. Returns { newCount, totalCount, lastSyncedAt }.
+ * 1. Find newest start_time_unix already stored.
+ * 2. Fetch only newer conversations from ElevenLabs.
+ * 3. Fetch full detail for each (transcript, charging, tokens).
+ * 4. Upsert into conversations table.
+ * 5. Update agents.last_synced_at.
  */
 async function syncConversations(agentDbId, agentElId, apiKey) {
   logger.info('Starting conversation sync', { agentDbId, agentElId });
 
-  // ── Step 1: Find the delta-sync checkpoint ────────────────
+  // ── Step 1: Delta-sync checkpoint ────────────────────────
   const { data: latest, error: latestErr } = await supabase
     .from('conversations')
     .select('start_time_unix')
@@ -51,21 +47,16 @@ async function syncConversations(agentDbId, agentElId, apiKey) {
     .limit(1)
     .maybeSingle();
 
-  if (latestErr) {
-    logger.error('Failed to query sync checkpoint', { err: latestErr.message });
-    throw Errors.database('Could not read conversation cache', { err: latestErr.message });
-  }
+  if (latestErr) throw Errors.database('Could not read conversation cache', { err: latestErr.message });
 
   const stopBeforeUnix = latest?.start_time_unix || null;
   logger.info('Sync checkpoint', {
     agentDbId,
     stopBeforeUnix,
-    stopBeforeDate: stopBeforeUnix
-      ? new Date(stopBeforeUnix * 1000).toISOString()
-      : 'none — first sync, fetching everything',
+    stopBeforeDate: stopBeforeUnix ? new Date(stopBeforeUnix * 1000).toISOString() : 'none — first sync',
   });
 
-  // ── Step 2: Fetch new conversations from ElevenLabs ───────
+  // ── Step 2: Fetch new conversations from ElevenLabs ──────
   const newConvs = await elevenlabs.fetchAllConversations(apiKey, agentElId, stopBeforeUnix);
 
   if (!newConvs.length) {
@@ -97,7 +88,6 @@ async function syncConversations(agentDbId, agentElId, apiKey) {
           conversationId: batch[j].conversation_id,
           reason: r.reason?.message || 'unknown',
         });
-        // Still store list-level data — better than losing it entirely
         detailedConvs.push({ list: batch[j], detail: null });
       }
     }
@@ -107,17 +97,27 @@ async function syncConversations(agentDbId, agentElId, apiKey) {
     }
   }
 
-  // ── Step 4: Build rows and upsert into `conversations` ────
+  // ── Step 4: Build rows and upsert ─────────────────────────
   const rows = detailedConvs.map(({ list, detail }) => buildRow(agentDbId, agentElId, list, detail));
+
+  // Log a sample row so we can verify field mapping in Railway logs
+  if (rows.length > 0) {
+    const sample = rows[0];
+    logger.info('Sample row (first conversation):', {
+      conversation_id: sample.conversation_id,
+      cost:            sample.cost,
+      llm_cost:        sample.llm_cost,
+      llm_price:       sample.llm_price,
+      has_transcript:  sample.transcript?.length > 0,
+      has_metadata:    Object.keys(sample.metadata || {}).length > 0,
+    });
+  }
 
   const { error: upsertErr } = await supabase
     .from('conversations')
     .upsert(rows, { onConflict: 'conversation_id' });
 
-  if (upsertErr) {
-    logger.error('Failed to upsert conversations', { err: upsertErr.message });
-    throw Errors.database('Failed to save conversations', { err: upsertErr.message });
-  }
+  if (upsertErr) throw Errors.database('Failed to save conversations', { err: upsertErr.message });
 
   // ── Step 5: Update agents.last_synced_at ──────────────────
   await supabase
@@ -142,42 +142,97 @@ async function syncConversations(agentDbId, agentElId, apiKey) {
 
 // ─────────────────────────────────────────────────────────────
 /**
- * Builds a row matching the `conversations` table schema exactly.
- * Maps ElevenLabs API response fields → our column names.
+ * Builds one DB row from ElevenLabs API response.
+ *
+ * ElevenLabs detail response shape (verified):
+ * {
+ *   conversation_id: "conv_xxx",
+ *   status: "done",
+ *   transcript: [...],
+ *   metadata: {
+ *     start_time_unix_secs: 1234567890,
+ *     call_duration_secs: 120,
+ *     cost: 0.0042,              ← TOTAL cost
+ *     charging: {
+ *       llm_charge: 0.0021,      ← LLM portion
+ *       llm_price:  0.001,
+ *       llm_usage: {
+ *         irreversible_generation: {
+ *           model_usage: {
+ *             input:        { tokens: 500 },
+ *             output_total: { tokens: 200 },
+ *           }
+ *         },
+ *         initiated_generation: {
+ *           model_usage: {
+ *             input:        { tokens: 100 },
+ *             output_total: { tokens:  50 },
+ *           }
+ *         }
+ *       }
+ *     }
+ *   },
+ *   conversation_initiation_client_data: {
+ *     dynamic_variables: { user_name: "..." }
+ *   }
+ * }
  */
 function buildRow(agentDbId, agentElId, listItem, detail) {
-  const meta     = detail?.metadata || listItem?.metadata || {};
-  const charging = detail?.charging || meta?.charging     || {};
-  const tr       = detail?.transcript || [];
+  // ── Pull from correct paths ───────────────────────────────
+  const meta     = detail?.metadata     || listItem?.metadata || {};
+  const charging = meta?.charging       || {};
+  const tr       = detail?.transcript   || [];
 
-  // Extract user name from dynamic variables or agent greeting
-  const userName = extractUserName(detail, tr);
+  // ── Token extraction ──────────────────────────────────────
+  // Tokens live inside metadata.charging.llm_usage
+  const llmUsage = charging?.llm_usage || {};
+  const irrevGen = llmUsage?.irreversible_generation?.model_usage || {};
+  const initGen  = llmUsage?.initiated_generation?.model_usage    || {};
+
+  const tokensIn  = (irrevGen?.input?.tokens        || 0) + (initGen?.input?.tokens        || 0);
+  const tokensOut = (irrevGen?.output_total?.tokens  || 0) + (initGen?.output_total?.tokens  || 0);
+
+  logger.debug('buildRow charging data', {
+    conversation_id: listItem.conversation_id,
+    raw_cost:        meta?.cost,
+    raw_llm_charge:  charging?.llm_charge,
+    raw_llm_price:   charging?.llm_price,
+    tokens_in:       tokensIn,
+    tokens_out:      tokensOut,
+    charging_keys:   Object.keys(charging),
+    meta_keys:       Object.keys(meta),
+  });
 
   return {
     conversation_id: listItem.conversation_id,
     agent_db_id:     agentDbId,
     agent_el_id:     agentElId || null,
     status:          detail?.status || listItem?.status || null,
-    start_time_unix: meta.start_time_unix_secs || listItem?.metadata?.start_time_unix_secs || null,
-    duration_secs:   meta.call_duration_secs   || listItem?.metadata?.call_duration_secs   || null,
-    user_name:       userName,
-    // jsonb columns — pass objects directly (no JSON.stringify needed for jsonb)
-    transcript:      tr.length ? tr : [],
-    metadata:        Object.keys(meta).length ? meta : {},
-    // Cost fields — pulled from charging object
-    cost:            detail?.metadata?.cost    != null ? Number(detail.metadata.cost)   : null,
-    llm_cost:        charging.llm_charge  != null ? Number(charging.llm_charge)  : null,
-    llm_price:       charging.llm_price != null ? Number(charging.llm_price) : null,
-    synced_at:       new Date().toISOString(),
+    start_time_unix: meta?.start_time_unix_secs || listItem?.metadata?.start_time_unix_secs || null,
+    duration_secs:   meta?.call_duration_secs   || listItem?.metadata?.call_duration_secs   || null,
+    user_name:       extractUserName(detail, tr),
+
+    // jsonb columns — store the full objects
+    transcript: tr.length ? tr : [],
+    metadata:   Object.keys(meta).length ? meta : {},
+
+    // ── Cost fields ───────────────────────────────────────
+    // cost     = total cost of the conversation (metadata.cost)
+    // llm_cost = just the LLM charge (metadata.charging.llm_charge)
+    // llm_price = the unit price used (metadata.charging.llm_price)
+    cost:      meta?.cost        != null ? Number(meta.cost)            : null,
+    llm_cost:  charging?.llm_charge != null ? Number(charging.llm_charge) : null,
+    llm_price: charging?.llm_price  != null ? Number(charging.llm_price)  : null,
+
+    synced_at: new Date().toISOString(),
   };
 }
 
 // ─────────────────────────────────────────────────────────────
 /**
- * Extracts the user's name from dynamic variables or the transcript.
+ * Extract user name from dynamic variables or transcript greeting.
  */
 function extractUserName(detail, transcript) {
-  // Try dynamic variables first (most reliable)
   const dv = detail?.conversation_initiation_client_data?.dynamic_variables;
   if (dv) {
     if (dv.user_name) return dv.user_name;
@@ -187,22 +242,18 @@ function extractUserName(detail, transcript) {
       }
     }
   }
-
-  // Fall back to scanning agent greeting for a name
   for (const t of (transcript || []).slice(0, 20)) {
     if (t.role === 'agent' && t.message) {
       const m = t.message.match(/\b(?:hey|hello|hi)\s+([A-Z][a-z]{1,30})\b/i);
       if (m) return m[1];
     }
   }
-
   return null;
 }
 
 // ─────────────────────────────────────────────────────────────
 /**
- * Reads all stored conversations for an agent from the DB.
- * Fast path — no ElevenLabs call needed.
+ * Read all stored conversations for an agent from DB.
  */
 async function getConversations(agentDbId, options = {}) {
   const { limit = 500, offset = 0 } = options;
@@ -214,10 +265,7 @@ async function getConversations(agentDbId, options = {}) {
     .order('start_time_unix', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error) {
-    logger.error('Failed to read conversations', { err: error.message });
-    throw Errors.database('Failed to read conversations', { err: error.message });
-  }
+  if (error) throw Errors.database('Failed to read conversations', { err: error.message });
 
   return { conversations: data || [], total: count || 0 };
 }
