@@ -240,7 +240,7 @@ function switchTab(t) {
 }
 
 // ── UTILS ─────────────────────────────────────────────────────
-const esc      = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+const esc      = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;') : '';
 const fmtDur   = s => { if (!s) return '—'; if (s<60) return s+'s'; return `${Math.floor(s/60)}m ${s%60}s`; };
 const fmtTime  = u => u ? new Date(u*1000).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '—';
 const fmtDate  = u => u ? new Date(u*1000).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : '—';

@@ -21,10 +21,14 @@ async function elFetch(path, apiKey, options = {}) {
   const url = `${BASE}${path}`;
   logger.debug('ElevenLabs request', { url, method: options.method || 'GET' });
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30-second timeout
+
   let res;
   try {
     res = await fetch(url, {
       ...options,
+      signal: controller.signal,
       headers: {
         'xi-api-key': apiKey,
         'Content-Type': 'application/json',
@@ -32,12 +36,23 @@ async function elFetch(path, apiKey, options = {}) {
       },
     });
   } catch (networkErr) {
-    // Network-level failure (DNS, timeout, etc.)
+    clearTimeout(timeoutId);
+    // Timeout hit — AbortController fired
+    if (networkErr.name === 'AbortError') {
+      logger.error('ElevenLabs request timed out', { url });
+      throw Errors.elevenlabs(
+        'ElevenLabs API request timed out after 30 seconds. Please try again.',
+        { originalError: 'AbortError', url }
+      );
+    }
+    // Network-level failure (DNS, connection refused, etc.)
     logger.error('ElevenLabs network error', { url, err: networkErr.message });
     throw Errors.elevenlabs(
       'Could not reach ElevenLabs API — check your network connection.',
       { originalError: networkErr.message }
     );
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   // Non-2xx response
@@ -92,6 +107,8 @@ async function fetchAllConversations(apiKey, agentId, stopBeforeUnix = null, max
   let page    = 0;
   let stopped = false;
 
+  const MAX_CONVERSATIONS = 2000; // safety cap to prevent memory exhaustion
+
   logger.info('Starting ElevenLabs conversation fetch', {
     agentId,
     stopBeforeUnix,
@@ -109,12 +126,20 @@ async function fetchAllConversations(apiKey, agentId, stopBeforeUnix = null, max
         conv.metadata?.start_time_unix_secs ||
         conv.start_time_unix_secs || null;
 
-      // If we have a cut-off timestamp and this conversation is older, stop
-      if (stopBeforeUnix && startTime && startTime <= stopBeforeUnix) {
+      // FIX: Changed <= to < so conversations with the exact same timestamp
+      // as the checkpoint are still fetched (upsert handles duplicates safely)
+      if (stopBeforeUnix && startTime && startTime < stopBeforeUnix) {
         stopped = true;
         break;
       }
       allConversations.push(conv);
+
+      // FIX: Memory safety cap — stop if we've accumulated too many
+      if (allConversations.length >= MAX_CONVERSATIONS) {
+        logger.warn('Hit conversation safety cap', { max: MAX_CONVERSATIONS, agentId });
+        stopped = true;
+        break;
+      }
     }
 
     if (stopped) break;

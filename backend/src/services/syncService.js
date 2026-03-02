@@ -39,16 +39,37 @@ const DETAIL_BATCH_SIZE     = 8;
 const DETAIL_BATCH_DELAY_MS = 150;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// In-memory lock to prevent concurrent syncs for the same agent
+const activeSyncs = new Set();
+
 // ─────────────────────────────────────────────────────────────
 /**
- * Main sync function.
+ * Main sync function (with concurrent-sync guard).
+ * Delegates to _syncInner after acquiring the lock.
+ */
+async function syncConversations(agentDbId, agentElId, apiKey) {
+  if (activeSyncs.has(agentDbId)) {
+    throw Errors.badRequest('A sync is already in progress for this agent. Please wait for it to finish.');
+  }
+
+  activeSyncs.add(agentDbId);
+  try {
+    return await _syncInner(agentDbId, agentElId, apiKey);
+  } finally {
+    activeSyncs.delete(agentDbId);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+/**
+ * Inner sync logic.
  * 1. Find newest start_time_unix already stored.
  * 2. Fetch only newer conversations from ElevenLabs.
  * 3. Fetch full detail for each (transcript, charging, tokens).
  * 4. Upsert into conversations table.
  * 5. Update agents.last_synced_at.
  */
-async function syncConversations(agentDbId, agentElId, apiKey) {
+async function _syncInner(agentDbId, agentElId, apiKey) {
   logger.info('Starting conversation sync', { agentDbId, agentElId });
 
   // ── Step 1: Delta-sync checkpoint ────────────────────────

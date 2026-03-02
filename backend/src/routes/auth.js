@@ -3,9 +3,10 @@
 //  Authentication endpoints — all auth flows go through the
 //  backend rather than calling Supabase directly from the browser.
 //
-//  POST /api/auth/signup   → create account
-//  POST /api/auth/signin   → sign in, return session tokens
-//  POST /api/auth/signout  → invalidate session (requires Bearer)
+//  POST   /api/auth/signup      → create account
+//  POST   /api/auth/signin      → sign in, return session tokens
+//  POST   /api/auth/signout     → invalidate session (requires Bearer)
+//  DELETE /api/auth/users/:id   → permanently delete a user (admin only)
 // ─────────────────────────────────────────────────────────────
 
 const express  = require('express');
@@ -29,7 +30,8 @@ router.post('/signup', asyncHandler(async (req, res) => {
   if (!password)  throw Errors.badRequest('Password is required.');
   if (password.length < 8) throw Errors.badRequest('Password must be at least 8 characters.');
 
-  // Create the user via Supabase Auth (service-role can skip email confirm if needed)
+  // Step 1: Create the user in Supabase Auth
+  // The DB trigger handle_new_user() will auto-create the profile row
   const { data, error } = await sbAdmin.auth.admin.createUser({
     email,
     password,
@@ -48,22 +50,26 @@ router.post('/signup', asyncHandler(async (req, res) => {
   const user = data.user;
   logger.info('New user created via backend', { userId: user.id, email: user.email });
 
-  // ── Upsert profile row ──────────────────────────────────────
-  // Determine role: first user ever becomes admin
-  const { count } = await sbAdmin
-    .from('profiles')
-    .select('*', { count: 'exact', head: true });
+  // Step 2: Wait for the DB trigger to create the profile
+  // The trigger handle_new_user() fires on auth.users INSERT and creates the profile row.
+  // We poll briefly because the trigger runs asynchronously.
+  let profile = null;
+  for (let i = 0; i < 8; i++) {
+    const { data: p } = await sbAdmin
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', user.id)
+      .single();
+    if (p) { profile = p; break; }
+    await new Promise(r => setTimeout(r, 300));
+  }
 
-  const role = count === 0 ? 'admin' : 'client';
+  // Step 3: If trigger created the profile but full_name is empty, update it
+  if (profile && full_name && !profile.full_name) {
+    await sbAdmin.from('profiles').update({ full_name }).eq('id', user.id);
+  }
 
-  await sbAdmin.from('profiles').upsert({
-    id:        user.id,
-    email:     user.email,
-    full_name: full_name || '',
-    role,
-  });
-
-  // Apply any pending invite role
+  // Step 4: Apply any pending invite role (overrides the trigger's default)
   const { data: invite } = await sbAdmin
     .from('pending_invites')
     .select('role')
@@ -72,9 +78,12 @@ router.post('/signup', asyncHandler(async (req, res) => {
     .limit(1)
     .maybeSingle();
 
+  let finalRole = profile?.role || 'client';
+
   if (invite) {
     await sbAdmin.from('profiles').update({ role: invite.role }).eq('id', user.id);
     await sbAdmin.from('pending_invites').delete().eq('email', email);
+    finalRole = invite.role;
     logger.info('Applied pending invite role', { email, role: invite.role });
   }
 
@@ -84,7 +93,7 @@ router.post('/signup', asyncHandler(async (req, res) => {
     data: {
       userId: user.id,
       email:  user.email,
-      role:   invite?.role || role,
+      role:   finalRole,
     },
   });
 }));
@@ -146,6 +155,27 @@ router.post('/signout', requireSupabaseUser, asyncHandler(async (req, res) => {
   }
   logger.info('User signed out', { userId: req.user?.id });
   res.json({ success: true, message: 'Signed out successfully.' });
+}));
+
+// ── DELETE /api/auth/users/:id ────────────────────────────────
+// Permanently removes a user (auth row + profile + access).
+// Admin only. The ON DELETE CASCADE on profiles handles cleanup.
+router.delete('/users/:id', requireSupabaseUser, asyncHandler(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    throw Errors.forbidden('Only admins can delete users.');
+  }
+  if (req.params.id === req.user.id) {
+    throw Errors.badRequest('You cannot delete your own account.');
+  }
+
+  // Delete from Supabase Auth — cascades to profiles via FK
+  const { error } = await sbAdmin.auth.admin.deleteUser(req.params.id);
+  if (error) {
+    throw Errors.database('Failed to delete user from auth system.', { err: error.message });
+  }
+
+  logger.info('User permanently deleted', { deletedId: req.params.id, byAdmin: req.user.id });
+  res.json({ success: true, message: 'User permanently removed.' });
 }));
 
 module.exports = router;
