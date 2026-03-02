@@ -150,8 +150,7 @@ router.post('/signout', requireSupabaseUser, asyncHandler(async (req, res) => {
   if (token) {
     const sbAnon = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
     // Set the session then sign out to invalidate the refresh token server-side
-    await sbAnon.auth.setSession({ access_token: token, refresh_token: '' }).catch(() => {});
-    await sbAnon.auth.signOut().catch(() => {});
+    await sbAdmin.auth.admin.signOut(req.user.id).catch(() => {});
   }
   logger.info('User signed out', { userId: req.user?.id });
   res.json({ success: true, message: 'Signed out successfully.' });

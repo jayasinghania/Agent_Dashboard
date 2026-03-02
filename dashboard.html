@@ -762,17 +762,14 @@ function renderTranscript(row, userName) {
   const dollars = rowToLLMDollars(row);
 
   const ipRows = [
-    { label:'Conversation ID', value: row.conversation_id,  mono:true, small:true },
+    { label:'Conversation ID', value: row.conversation_id,                                                                                mono:true, small:true },
     { label:'Status',          value: `<span class="sc-stat ${stClass(row.status)}" style="font-size:.65rem">${row.status||'—'}</span>`, html:true },
     { label:'Date',            value: row.start_time_unix ? fmtDate(row.start_time_unix) : '—' },
     { label:'Time',            value: row.start_time_unix ? fmtTime(row.start_time_unix) : '—' },
     { label:'Duration',        value: fmtDur(row.duration_secs) },
-    { label:'LLM Cost',        value: dollars != null ? fmtDollars(dollars) : '—' },
-    { label:'LLM Credits',     value: row.llm_cost != null ? (fmtCost(Number(row.llm_cost)) || '—') : (cost?.label === 'LLM' ? fmtCost(cost.cost) : '—') },
-    { label:'Total Credits',   value: row.cost     != null ? (fmtCost(Number(row.cost))     || '—') : (cost?.label === 'total' ? fmtCost(cost.cost) : '—') },
-    { label:'Tokens In',       value: tok ? fmtTokens(tok.input)  : '—' },
-    { label:'Tokens Out',      value: tok ? fmtTokens(tok.output) : '—' },
-    { label:'Total Tokens',    value: tok ? fmtTokens(tok.total)  : '—' },
+    { label:'Call Cost',       value: row.cost     != null ? Math.round(Number(row.cost))     + ' credits' : '—' },
+    { label:'LLM Credits',     value: row.llm_cost != null ? Math.round(Number(row.llm_cost)) + ' credits' : '—' },
+    { label:'LLM Cost',        value: dollars      != null ? '$' + Number(dollars).toFixed(5) : '—' },
   ];
 
   document.getElementById('ipBody').innerHTML = `
