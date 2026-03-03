@@ -15,19 +15,20 @@
 //    llm_cost                 numeric    ← detail.metadata.charging.llm_charge
 //    llm_price                numeric    ← detail.metadata.charging.llm_price
 //    transcript_summary       text       ← detail.analysis.transcript_summary
-//    confidence_score         jsonb      ← detail.analysis.evaluation_criteria_results.confidence_score
-//    knowledge_coverage_score jsonb      ← detail.analysis.evaluation_criteria_results.knowledge_coverage_score
 //    primary_question         text       ← detail.analysis.data_collection_results.primary_question.value
-//    question_category        text       ← detail.analysis.data_collection_results.question_category.value
+//    kb_question_list         jsonb      ← detail.analysis.data_collection_results.kb_question_list
+//    non_kb_question_list     jsonb      ← detail.analysis.data_collection_results.non_kb_question_list
 //    synced_at                timestamptz
 //
 //  REQUIRED SUPABASE MIGRATION (run once):
 //    ALTER TABLE conversations
-//      ADD COLUMN IF NOT EXISTS transcript_summary       text,
-//      ADD COLUMN IF NOT EXISTS confidence_score         jsonb,
-//      ADD COLUMN IF NOT EXISTS knowledge_coverage_score jsonb,
-//      ADD COLUMN IF NOT EXISTS primary_question         text,
-//      ADD COLUMN IF NOT EXISTS question_category        text;
+//      DROP COLUMN IF EXISTS confidence_score,
+//      DROP COLUMN IF EXISTS knowledge_coverage_score,
+//      DROP COLUMN IF EXISTS question_category,
+//      ADD COLUMN IF NOT EXISTS transcript_summary    text,
+//      ADD COLUMN IF NOT EXISTS primary_question      text,
+//      ADD COLUMN IF NOT EXISTS kb_question_list      jsonb,
+//      ADD COLUMN IF NOT EXISTS non_kb_question_list  jsonb;
 // ─────────────────────────────────────────────────────────────
 
 const supabase   = require('../utils/supabase');
@@ -138,17 +139,16 @@ async function _syncInner(agentDbId, agentElId, apiKey) {
   if (rows.length > 0) {
     const sample = rows[0];
     logger.info('Sample row (first conversation):', {
-      conversation_id:          sample.conversation_id,
-      cost:                     sample.cost,
-      llm_cost:                 sample.llm_cost,
-      llm_price:                sample.llm_price,
-      has_transcript:           sample.transcript?.length > 0,
-      has_metadata:             Object.keys(sample.metadata || {}).length > 0,
-      transcript_summary:       sample.transcript_summary ? 'present' : null,
-      confidence_score:         sample.confidence_score   ? sample.confidence_score.result : null,
-      knowledge_coverage_score: sample.knowledge_coverage_score ? sample.knowledge_coverage_score.result : null,
-      primary_question:         sample.primary_question,
-      question_category:        sample.question_category,
+      conversation_id:      sample.conversation_id,
+      cost:                 sample.cost,
+      llm_cost:             sample.llm_cost,
+      llm_price:            sample.llm_price,
+      has_transcript:       sample.transcript?.length > 0,
+      has_metadata:         Object.keys(sample.metadata || {}).length > 0,
+      transcript_summary:   sample.transcript_summary   ? 'present' : null,
+      primary_question:     sample.primary_question,
+      kb_question_list:     sample.kb_question_list     ? 'present' : null,
+      non_kb_question_list: sample.non_kb_question_list ? 'present' : null,
     });
   }
 
@@ -191,49 +191,20 @@ async function _syncInner(agentDbId, agentElId, apiKey) {
  *   metadata: {
  *     start_time_unix_secs: 1234567890,
  *     call_duration_secs: 120,
- *     cost: 0.0042,              ← TOTAL cost
+ *     cost: 0.0042,
  *     charging: {
- *       llm_charge: 0.0021,      ← LLM portion
+ *       llm_charge: 0.0021,
  *       llm_price:  0.001,
- *       llm_usage: {
- *         irreversible_generation: {
- *           model_usage: {
- *             input:        { tokens: 500 },
- *             output_total: { tokens: 200 },
- *           }
- *         },
- *         initiated_generation: {
- *           model_usage: {
- *             input:        { tokens: 100 },
- *             output_total: { tokens:  50 },
- *           }
- *         }
- *       }
+ *       llm_usage: { ... }
  *     }
  *   },
  *   analysis: {
  *     transcript_summary: "User asked about...",
- *     evaluation_criteria_results: {
- *       confidence_score: {
- *         criteria_id:  "confidence_score",
- *         result:       "success" | "failure" | "unknown",
- *         rationale:    "The agent responded confidently...",
- *       },
- *       knowledge_coverage_score: {
- *         criteria_id:  "knowledge_coverage_score",
- *         result:       "success" | "failure" | "unknown",
- *         rationale:    "The agent covered...",
- *       },
- *     },
+ *     evaluation_criteria_results: { ... },
  *     data_collection_results: {
- *       primary_question: {
- *         data_collection_id: "primary_question",
- *         value: "What is the leave policy?",
- *       },
- *       question_category: {
- *         data_collection_id: "question_category",
- *         value: "Company",
- *       },
+ *       primary_question:    { data_collection_id: "primary_question",    value: "..." },
+ *       kb_question_list:    { data_collection_id: "kb_question_list",    value: [...] },
+ *       non_kb_question_list:{ data_collection_id: "non_kb_question_list",value: [...] },
  *     },
  *   },
  *   conversation_initiation_client_data: {
@@ -248,8 +219,6 @@ function buildRow(agentDbId, agentElId, listItem, detail) {
   const tr       = detail?.transcript   || [];
 
   // ── Token extraction ──────────────────────────────────────
-  // model_usage is keyed by model name (e.g. 'gpt-4.1-nano') — must use Object.values()[0]
-  // Use irreversible_generation only — initiated_generation duplicates the same counts
   const llmUsage   = charging?.llm_usage || {};
   const irrevModel = Object.values(llmUsage?.irreversible_generation?.model_usage || {})[0] || {};
 
@@ -257,34 +226,30 @@ function buildRow(agentDbId, agentElId, listItem, detail) {
   const tokensOut = irrevModel?.output_total?.tokens || 0;
 
   // ── Analysis extraction ───────────────────────────────────
-  // detail.analysis contains evaluation criteria, data collection, and transcript summary
   const analysis    = detail?.analysis || {};
-  const evalResults = analysis?.evaluation_criteria_results || {};
-  const dataResults = analysis?.data_collection_results     || {};
+  const dataResults = analysis?.data_collection_results || {};
 
-  // Evaluation criteria — stored as jsonb { result, rationale }
-  const confidenceScore         = evalResults?.confidence_score         || null;
-  const knowledgeCoverageScore  = evalResults?.knowledge_coverage_score || null;
+  // Data collection fields
+  const primaryQuestion   = dataResults?.primary_question?.value    ?? null;
+  const kbQuestionList    = dataResults?.kb_question_list?.value    ?? null;
+  const nonKbQuestionList = dataResults?.non_kb_question_list?.value ?? null;
 
-  // Data collection — stored as plain text values
-  const primaryQuestion  = dataResults?.primary_question?.value  ?? null;
-  const questionCategory = dataResults?.question_category?.value ?? null;
-
-  // Transcript summary — stored as text
+  // Transcript summary
   const transcriptSummary = analysis?.transcript_summary ?? null;
 
   logger.debug('buildRow charging data', {
-    conversation_id: listItem.conversation_id,
-    raw_cost:        meta?.cost,
-    raw_llm_charge:  charging?.llm_charge,
-    raw_llm_price:   charging?.llm_price,
-    tokens_in:       tokensIn,
-    tokens_out:      tokensOut,
-    charging_keys:   Object.keys(charging),
-    meta_keys:       Object.keys(meta),
-    has_analysis:    Object.keys(analysis).length > 0,
-    has_eval:        Object.keys(evalResults).length > 0,
-    has_data_coll:   Object.keys(dataResults).length > 0,
+    conversation_id:      listItem.conversation_id,
+    raw_cost:             meta?.cost,
+    raw_llm_charge:       charging?.llm_charge,
+    raw_llm_price:        charging?.llm_price,
+    tokens_in:            tokensIn,
+    tokens_out:           tokensOut,
+    charging_keys:        Object.keys(charging),
+    meta_keys:            Object.keys(meta),
+    has_analysis:         Object.keys(analysis).length > 0,
+    has_data_coll:        Object.keys(dataResults).length > 0,
+    kb_question_list:     kbQuestionList     ? 'present' : null,
+    non_kb_question_list: nonKbQuestionList  ? 'present' : null,
   });
 
   return {
@@ -296,22 +261,20 @@ function buildRow(agentDbId, agentElId, listItem, detail) {
     duration_secs:   meta?.call_duration_secs   || listItem?.metadata?.call_duration_secs   || null,
     user_name:       extractUserName(detail, tr),
 
-    // jsonb columns — store the full objects
+    // jsonb columns
     transcript: tr.length ? tr : [],
     metadata:   Object.keys(meta).length ? meta : {},
 
     // ── Cost fields ───────────────────────────────────────
-    cost:      meta?.cost           != null ? Number(meta.cost)            : null,
-    llm_cost:  charging?.llm_charge != null ? Number(charging.llm_charge)  : null,
-    llm_price: charging?.llm_price  != null ? Number(charging.llm_price)   : null,
+    cost:      meta?.cost           != null ? Number(meta.cost)           : null,
+    llm_cost:  charging?.llm_charge != null ? Number(charging.llm_charge) : null,
+    llm_price: charging?.llm_price  != null ? Number(charging.llm_price)  : null,
 
     // ── Analysis fields ───────────────────────────────────
-    // Stored in DB only — not displayed on dashboard
-    transcript_summary:       transcriptSummary,
-    confidence_score:         confidenceScore,         // jsonb: { result, rationale }
-    knowledge_coverage_score: knowledgeCoverageScore,  // jsonb: { result, rationale }
-    primary_question:         primaryQuestion,          // text
-    question_category:        questionCategory,         // text
+    transcript_summary:   transcriptSummary,
+    primary_question:     primaryQuestion,
+    kb_question_list:     kbQuestionList,
+    non_kb_question_list: nonKbQuestionList,
 
     synced_at: new Date().toISOString(),
   };

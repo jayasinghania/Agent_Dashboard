@@ -56,6 +56,20 @@
     .sync-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);}
     .sync-dot.stale{background:var(--amber);}
     .sync-dot.never{background:var(--rose);}
+    /* ── Export range buttons ── */
+.export-range-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: .75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all .15s;
+}
+.export-range-btn:hover   { border-color: var(--accent); color: var(--accent); }
+.export-range-btn.active  { background: var(--accent); border-color: var(--accent); color: #fff; }
   </style>
 </head>
 <body>
@@ -74,6 +88,10 @@
       <div class="sync-dot never" id="syncDot"></div>
       <span id="syncLabel">Never synced</span>
     </div>
+    <button class="btn-outline" id="exportCsvBtn" onclick="openExportModal()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Export CSV
+    </button>
     <!-- Full re-sync: wipes DB cache and re-fetches everything fresh -->
     <button class="resync-btn" id="resyncBtn" onclick="triggerFullResync()" title="Wipe cache and re-fetch all conversations (fixes missing cost/token data)">♻️ Re-sync All</button>
     <!-- Delta sync: only fetches new conversations since last sync -->
@@ -179,7 +197,47 @@
     </div>
   </aside>
 </div>
+<!-- ── Export CSV Modal ─────────────────────────────────────── -->
+<div id="exportModal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeExportModal()">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">Export Chat History</span>
+      <button class="modal-close" onclick="closeExportModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
 
+      <p style="font-size:.8rem;color:var(--text-muted);margin:0">
+        Exports: User Name, Date, Transcript Summary
+      </p>
+
+      <!-- Range selector -->
+      <div style="display:flex;gap:8px">
+        <button class="export-range-btn active" data-range="week"  onclick="setExportRange('week',this)">Last 7 days</button>
+        <button class="export-range-btn"        data-range="month" onclick="setExportRange('month',this)">Last 30 days</button>
+        <button class="export-range-btn"        data-range="custom" onclick="setExportRange('custom',this)">Custom</button>
+      </div>
+
+      <!-- Custom date pickers (hidden unless custom selected) -->
+      <div id="exportCustomDates" style="display:none;gap:10px;flex-wrap:wrap">
+        <label style="font-size:.75rem;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px">
+          From
+          <input type="date" id="exportFrom" class="form-input" style="font-size:.8rem"/>
+        </label>
+        <label style="font-size:.75rem;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px">
+          To
+          <input type="date" id="exportTo" class="form-input" style="font-size:.8rem"/>
+        </label>
+      </div>
+
+      <div id="exportRowCount" style="font-size:.75rem;color:var(--text-muted)"></div>
+
+      <button class="btn-primary" onclick="downloadExportCsv()" style="width:100%;justify-content:center">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download CSV
+      </button>
+    </div>
+  </div>
+</div>
 <script>
 // ── CONFIG ────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
@@ -835,6 +893,117 @@ document.addEventListener('keydown', e => {
 });
 
 init();
+// ── Export CSV ──────────────────────────────────────────────
+let _exportRange = 'week';
+
+function openExportModal() {
+  // Pre-set default dates
+  const now   = new Date();
+  const from7 = new Date(now); from7.setDate(now.getDate() - 7);
+  document.getElementById('exportFrom').value = from7.toISOString().slice(0,10);
+  document.getElementById('exportTo').value   = now.toISOString().slice(0,10);
+  _exportRange = 'week';
+  document.querySelectorAll('.export-range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === 'week'));
+  document.getElementById('exportCustomDates').style.display = 'none';
+  _updateExportCount();
+  document.getElementById('exportModal').style.display = 'flex';
+}
+
+function closeExportModal() {
+  document.getElementById('exportModal').style.display = 'none';
+}
+
+function setExportRange(range, btn) {
+  _exportRange = range;
+  document.querySelectorAll('.export-range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('exportCustomDates').style.display = range === 'custom' ? 'flex' : 'none';
+  _updateExportCount();
+}
+
+function _getExportBounds() {
+  const now = new Date();
+  let from, to;
+
+  if (_exportRange === 'week') {
+    to   = now;
+    from = new Date(now); from.setDate(now.getDate() - 7);
+  } else if (_exportRange === 'month') {
+    to   = now;
+    from = new Date(now); from.setDate(now.getDate() - 30);
+  } else {
+    const fv = document.getElementById('exportFrom').value;
+    const tv = document.getElementById('exportTo').value;
+    if (!fv || !tv) return null;
+    from = new Date(fv);
+    to   = new Date(tv); to.setHours(23,59,59,999);
+  }
+
+  return { fromUnix: Math.floor(from.getTime()/1000), toUnix: Math.floor(to.getTime()/1000) };
+}
+
+function _getFilteredRows() {
+  // `allConversations` should be the array your dashboard already keeps in memory
+  // adjust the variable name to match yours (e.g. conversations, convCache, etc.)
+  const source = window.allConvs || window.conversations || [];
+  const bounds = _getExportBounds();
+  if (!bounds) return [];
+  return source.filter(r => {
+    const t = r.start_time_unix;
+    return t >= bounds.fromUnix && t <= bounds.toUnix;
+  });
+}
+
+function _updateExportCount() {
+  const el = document.getElementById('exportRowCount');
+  if (_exportRange === 'custom') { el.textContent = ''; return; }
+  const rows = _getFilteredRows();
+  el.textContent = rows.length
+    ? `${rows.length} conversation${rows.length !== 1 ? 's' : ''} will be exported`
+    : 'No conversations in this range';
+}
+
+// Re-count when user changes custom dates
+document.addEventListener('DOMContentLoaded', () => {
+  ['exportFrom','exportTo'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      if (_exportRange === 'custom') _updateExportCount();
+    });
+  });
+});
+
+function _escapeCsv(val) {
+  if (val == null) return '';
+  const s = String(val);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+
+function downloadExportCsv() {
+  const rows = _getFilteredRows();
+  if (!rows.length) { alert('No conversations found for the selected range.'); return; }
+
+  const header = ['User Name', 'Date', 'Transcript Summary'];
+  const lines  = [header.join(',')];
+
+  rows.forEach(r => {
+    const date    = r.start_time_unix ? new Date(r.start_time_unix * 1000).toLocaleString() : '';
+    const name    = r.user_name            || '';
+    const summary = r.transcript_summary   || '';
+    lines.push([_escapeCsv(name), _escapeCsv(date), _escapeCsv(summary)].join(','));
+  });
+
+  const blob     = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url      = URL.createObjectURL(blob);
+  const a        = document.createElement('a');
+  const bounds   = _getExportBounds();
+  const fromDate = bounds ? new Date(bounds.fromUnix*1000).toISOString().slice(0,10) : 'export';
+  const toDate   = bounds ? new Date(bounds.toUnix*1000).toISOString().slice(0,10)   : '';
+  a.href         = url;
+  a.download     = `chat-history_${fromDate}_${toDate}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  closeExportModal();
+}
 </script>
 </body>
 </html>
