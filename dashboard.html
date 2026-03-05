@@ -49,6 +49,17 @@
     .resync-btn:hover{background:var(--amber);color:#fff;}
     .resync-btn:disabled{opacity:.5;cursor:not-allowed;}
 
+    /* ── FIXED: Export CSV button ── */
+    .btn-outline {
+      display:flex;align-items:center;gap:6px;padding:7px 16px;
+      background:var(--lav-l);border:1.5px solid var(--lav-m);
+      border-radius:50px;font-family:'Nunito',sans-serif;
+      font-size:.78rem;font-weight:700;color:var(--lav);cursor:pointer;transition:all .15s;
+      text-decoration:none;
+    }
+    .btn-outline:hover{background:var(--lav);color:#fff;}
+    .btn-outline:disabled{opacity:.5;cursor:not-allowed;}
+
     .sync-status{
       font-size:.65rem;font-weight:700;color:var(--ink3);
       display:flex;align-items:center;gap:5px;
@@ -65,11 +76,11 @@
       backdrop-filter: blur(3px);
     }
     .modal-box {
-      background: var(--card-bg, #fff);
+      background: var(--white, #fff);
       border-radius: 16px;
       border: 1.5px solid var(--border, #ede9e4);
       box-shadow: 0 20px 60px rgba(0,0,0,0.18);
-      width: 100%; max-width: 420px;
+      width: 100%; max-width: 460px;
       overflow: hidden;
       animation: modalPop .2s cubic-bezier(.34,1.56,.64,1);
     }
@@ -85,7 +96,7 @@
     .modal-title {
       font-family: 'Nunito', sans-serif;
       font-size: .9rem; font-weight: 800;
-      color: var(--ink1, #2d2926);
+      color: var(--ink, #2d2926);
     }
     .modal-close {
       background: none; border: none; cursor: pointer;
@@ -110,14 +121,14 @@
       cursor: pointer;
       transition: all .15s;
     }
-    .export-range-btn:hover  { border-color: #9b7ff4; color: #9b7ff4; }
-    .export-range-btn.active { background: #9b7ff4; border-color: #9b7ff4; color: #fff; }
+    .export-range-btn:hover  { border-color: var(--lav); color: var(--lav); }
+    .export-range-btn.active { background: var(--lav); border-color: var(--lav); color: #fff; }
 
     /* ── Export download button ── */
     #exportModal .btn-primary {
       display: flex; align-items: center; gap: 7px;
       padding: 10px 18px;
-      background: #9b7ff4; border: none; border-radius: 50px;
+      background: var(--lav); border: none; border-radius: 50px;
       font-family: 'Nunito', sans-serif; font-size: .82rem; font-weight: 800;
       color: #fff; cursor: pointer; transition: background .15s;
       width: 100%; justify-content: center; box-sizing: border-box;
@@ -129,10 +140,10 @@
       padding: 7px 10px; border-radius: 8px;
       border: 1.5px solid var(--border, #ede9e4);
       font-family: 'Nunito', sans-serif; font-size: .8rem;
-      color: var(--ink1, #2d2926); background: var(--bg, #faf9f7);
+      color: var(--ink, #2d2926); background: var(--bg, #faf8f5);
       outline: none; width: 100%; box-sizing: border-box;
     }
-    #exportModal .form-input:focus { border-color: #9b7ff4; }
+    #exportModal .form-input:focus { border-color: var(--lav); }
 
     #exportRowCount {
       font-family: 'Nunito', sans-serif;
@@ -153,6 +164,22 @@
       flex: 1; min-width: 140px;
       font-family: 'Nunito', sans-serif; font-weight: 700;
     }
+
+    /* ── Export field checklist ── */
+    .export-fields {
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .export-field-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-radius: 8px;
+      border: 1.5px solid var(--border, #ede9e4);
+      background: var(--bg, #faf8f5);
+      cursor: pointer; transition: all .15s; user-select: none;
+    }
+    .export-field-item:hover { border-color: var(--lav-m); background: var(--lav-l); }
+    .export-field-item input[type=checkbox] { accent-color: var(--lav); width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+    .export-field-label { font-family: 'Nunito', sans-serif; font-size: .78rem; font-weight: 600; color: var(--ink2); }
+    .export-field-desc  { font-family: 'Nunito', sans-serif; font-size: .65rem; color: var(--ink3); margin-left: auto; }
   </style>
 </head>
 <body>
@@ -171,7 +198,7 @@
       <div class="sync-dot never" id="syncDot"></div>
       <span id="syncLabel">Never synced</span>
     </div>
-    <button class="btn-outline" id="exportCsvBtn" onclick="openExportModal()" style="display:flex;align-items:center;gap:6px;">
+    <button class="btn-outline" id="exportCsvBtn" onclick="openExportModal()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
         <polyline points="7 10 12 15 17 10"/>
@@ -283,7 +310,7 @@
   </aside>
 </div>
 
-<!-- ── Export CSV Modal ─────────────────────────────────────── -->
+<!-- ── Export CSV Modal ── -->
 <div id="exportModal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeExportModal()">
   <div class="modal-box">
     <div class="modal-header">
@@ -292,25 +319,49 @@
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
 
-      <p class="export-desc">Exports: User Name, Date, Transcript Summary</p>
-
-      <!-- Range selector -->
-      <div style="display:flex;gap:8px;">
-        <button class="export-range-btn active" data-range="week"   onclick="setExportRange('week',this)">Last 7 days</button>
-        <button class="export-range-btn"        data-range="month"  onclick="setExportRange('month',this)">Last 30 days</button>
-        <button class="export-range-btn"        data-range="custom" onclick="setExportRange('custom',this)">Custom</button>
+      <!-- Date range -->
+      <div>
+        <div style="font-size:.68rem;font-weight:800;color:var(--ink2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Date Range</div>
+        <div style="display:flex;gap:8px;">
+          <button class="export-range-btn active" data-range="week"   onclick="setExportRange('week',this)">Last 7 days</button>
+          <button class="export-range-btn"        data-range="month"  onclick="setExportRange('month',this)">Last 30 days</button>
+          <button class="export-range-btn"        data-range="custom" onclick="setExportRange('custom',this)">Custom</button>
+        </div>
       </div>
 
       <!-- Custom date pickers -->
       <div id="exportCustomDates" class="export-custom-dates">
-        <label>
-          From
-          <input type="date" id="exportFrom" class="form-input"/>
-        </label>
-        <label>
-          To
-          <input type="date" id="exportTo" class="form-input"/>
-        </label>
+        <label>From<input type="date" id="exportFrom" class="form-input"/></label>
+        <label>To<input type="date" id="exportTo" class="form-input"/></label>
+      </div>
+
+      <!-- Fields to export -->
+      <div>
+        <div style="font-size:.68rem;font-weight:800;color:var(--ink2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Fields to Export</div>
+        <div class="export-fields">
+          <label class="export-field-item">
+            <input type="checkbox" id="ef-name"    checked/>
+            <span class="export-field-label">User Name</span>
+          </label>
+          <label class="export-field-item">
+            <input type="checkbox" id="ef-date"    checked/>
+            <span class="export-field-label">Date</span>
+          </label>
+          <label class="export-field-item">
+            <input type="checkbox" id="ef-summary" checked/>
+            <span class="export-field-label">Transcript Summary</span>
+          </label>
+          <label class="export-field-item">
+            <input type="checkbox" id="ef-kb"      checked/>
+            <span class="export-field-label">KB Questions</span>
+            <span class="export-field-desc">questions answered from knowledge base</span>
+          </label>
+          <label class="export-field-item">
+            <input type="checkbox" id="ef-nonkb"   checked/>
+            <span class="export-field-label">Non-KB Questions</span>
+            <span class="export-field-desc">questions not in knowledge base</span>
+          </label>
+        </div>
       </div>
 
       <div id="exportRowCount"></div>
@@ -333,12 +384,10 @@ const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
 const BACKEND_URL = 'https://agentdashboard-production-5777.up.railway.app';
 const API_SECRET  = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e';
-// ─────────────────────────────────────────────────────────────
 
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ── URL PARAMS ────────────────────────────────────────────────
 const P          = new URLSearchParams(location.search);
 const agentDbId  = P.get('agentDbId') || '';
 const agentName  = P.get('name')      || 'Agent';
@@ -352,33 +401,22 @@ document.getElementById('agentIdEl').textContent = agentIdVal || 'No agent ID';
 const avEl = document.getElementById('agentAv');
 avEl.textContent = agentEmoji; avEl.dataset.color = agentColor;
 
-// ── STATE ─────────────────────────────────────────────────────
-let allConvs       = [];
-let userMap        = {};
-let userLatestConv = {};
+let allConvs = [], userMap = {}, userLatestConv = {};
 let activeUser = null, activeConv = null, activeDayFilter = null;
-let chartInst  = null;
-let currentUserRole = null;
+let chartInst = null, currentUserRole = null;
 
-// ── BACKEND HELPER ────────────────────────────────────────────
 async function backendFetch(path, options = {}) {
   const { data: { session } } = await sb.auth.getSession();
   const token = session?.access_token;
   const res = await fetch(`${BACKEND_URL}${path}`, {
     ...options,
-    headers: {
-      'Content-Type':  'application/json',
-      'x-api-secret':  API_SECRET,
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
+    headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET, ...(token ? { 'Authorization': `Bearer ${token}` } : {}), ...(options.headers || {}) },
   });
   const data = await res.json();
   if (!res.ok || !data.success) throw new Error(data?.error?.message || `Backend error ${res.status}`);
   return data;
 }
 
-// ── TABS ──────────────────────────────────────────────────────
 function switchTab(t) {
   document.getElementById('tabOv').classList.toggle('active', t==='ov');
   document.getElementById('tabCh').classList.toggle('active', t==='ch');
@@ -386,7 +424,6 @@ function switchTab(t) {
   document.getElementById('chatScreen').classList.toggle('active', t==='ch');
 }
 
-// ── UTILS ─────────────────────────────────────────────────────
 const esc      = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;') : '';
 const fmtDur   = s => { if (!s) return '—'; if (s<60) return s+'s'; return `${Math.floor(s/60)}m ${s%60}s`; };
 const fmtTime  = u => u ? new Date(u*1000).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '—';
@@ -410,11 +447,10 @@ function dayLabelShort(u) {
   return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
 }
 
-// ── TOKEN EXTRACTION ──────────────────────────────────────────
 function rowToTokens(row) {
   if (!row?.metadata) return null;
   try {
-    const meta     = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+    const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
     const charging = meta?.charging || {};
     const llmUsage = charging?.llm_usage || {};
     const irrevModel = Object.values(llmUsage?.irreversible_generation?.model_usage || {})[0] || {};
@@ -422,22 +458,17 @@ function rowToTokens(row) {
     const output = irrevModel?.output_total?.tokens || 0;
     if (!input && !output) return null;
     return { input, output, total: input + output };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
-// ── COST EXTRACTION ───────────────────────────────────────────
 function rowToCost(row) {
   if (row.llm_cost != null && Number(row.llm_cost) > 0) return { cost: Number(row.llm_cost), label: 'LLM' };
   if (row.cost     != null && Number(row.cost)     > 0) return { cost: Number(row.cost),     label: 'total' };
   try {
-    const meta     = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
+    const meta = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
     const charging = meta?.charging || {};
-    if (charging?.llm_charge != null && Number(charging.llm_charge) > 0)
-      return { cost: Number(charging.llm_charge), label: 'LLM' };
-    if (meta?.cost != null && Number(meta.cost) > 0)
-      return { cost: Number(meta.cost), label: 'total' };
+    if (charging?.llm_charge != null && Number(charging.llm_charge) > 0) return { cost: Number(charging.llm_charge), label: 'LLM' };
+    if (meta?.cost != null && Number(meta.cost) > 0) return { cost: Number(meta.cost), label: 'total' };
   } catch {}
   return null;
 }
@@ -445,7 +476,7 @@ function rowToCost(row) {
 function rowToLLMDollars(row) {
   if (row.llm_price != null && Number(row.llm_price) > 0) return Number(row.llm_price);
   try {
-    const meta     = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
+    const meta = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
     const charging = meta?.charging || {};
     if (charging?.llm_price != null && Number(charging.llm_price) > 0) return Number(charging.llm_price);
   } catch {}
@@ -462,7 +493,7 @@ function extractUserName(row) {
   if (row.metadata) {
     try {
       const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
-      const dv   = meta?.conversation_initiation_client_data?.dynamic_variables;
+      const dv = meta?.conversation_initiation_client_data?.dynamic_variables;
       if (dv?.user_name) return dv.user_name;
       if (dv) {
         for (const k of Object.keys(dv)) {
@@ -484,28 +515,10 @@ function extractUserName(row) {
   return null;
 }
 
-// ── FORMAT HELPERS ────────────────────────────────────────────
-const fmtCost = c => {
-  if (c === null || c === undefined) return null;
-  if (c === 0) return '0 cr';
-  return `${Math.round(c)} cr`;
-};
-const fmtDollars = c => {
-  if (c === null || c === undefined) return null;
-  if (c === 0) return '$0.00';
-  if (c < 0.00001) return `${c.toFixed(6)}`;
-  if (c < 0.001)   return `${c.toFixed(5)}`;
-  if (c < 0.01)    return `${c.toFixed(4)}`;
-  return `${c.toFixed(2)}`;
-};
-const fmtTokens = n => {
-  if (!n && n !== 0) return '—';
-  if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M';
-  if (n >= 1_000)     return (n/1_000).toFixed(1)+'K';
-  return String(n);
-};
+const fmtCost = c => { if (c === null || c === undefined) return null; if (c === 0) return '0 cr'; return `${Math.round(c)} cr`; };
+const fmtDollars = c => { if (c === null || c === undefined) return null; if (c === 0) return '$0.00'; if (c < 0.00001) return `${c.toFixed(6)}`; if (c < 0.001) return `${c.toFixed(5)}`; if (c < 0.01) return `${c.toFixed(4)}`; return `${c.toFixed(2)}`; };
+const fmtTokens = n => { if (!n && n !== 0) return '—'; if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M'; if (n >= 1_000) return (n/1_000).toFixed(1)+'K'; return String(n); };
 
-// ── SYNC ──────────────────────────────────────────────────────
 async function triggerSync() {
   if (!agentDbId) return;
   const btn = document.getElementById('syncBtn');
@@ -520,10 +533,7 @@ async function triggerSync() {
   } catch (err) {
     btn.textContent = '❌ Failed';
     setTimeout(() => { btn.textContent = '🔄 Sync Now'; }, 3000);
-    console.error('[Dashboard] Sync failed:', err.message);
-  } finally {
-    btn.disabled = false; btn.classList.remove('syncing');
-  }
+  } finally { btn.disabled = false; btn.classList.remove('syncing'); }
 }
 
 async function triggerFullResync() {
@@ -543,40 +553,28 @@ async function triggerFullResync() {
   } catch (err) {
     btn.textContent = '❌ Failed';
     setTimeout(() => { btn.textContent = '♻️ Re-sync All'; }, 3000);
-    console.error('[Dashboard] Full re-sync failed:', err.message);
     alert('Re-sync failed: ' + err.message);
-  } finally {
-    btn.disabled = false;
-  }
+  } finally { btn.disabled = false; }
 }
 
 function updateSyncStatus(lastSyncedAt) {
-  const dot   = document.getElementById('syncDot');
-  const label = document.getElementById('syncLabel');
-  if (!lastSyncedAt) {
-    dot.className = 'sync-dot never'; label.textContent = 'Never synced'; return;
-  }
+  const dot = document.getElementById('syncDot'), label = document.getElementById('syncLabel');
+  if (!lastSyncedAt) { dot.className = 'sync-dot never'; label.textContent = 'Never synced'; return; }
   const mins = Math.floor((Date.now() - new Date(lastSyncedAt).getTime()) / 60000);
   dot.className = mins > 60 ? 'sync-dot stale' : 'sync-dot';
-  label.textContent = mins < 1 ? 'Synced just now'
-    : mins < 60 ? `Synced ${mins}m ago`
-    : `Synced ${Math.floor(mins/60)}h ago`;
+  label.textContent = mins < 1 ? 'Synced just now' : mins < 60 ? `Synced ${mins}m ago` : `Synced ${Math.floor(mins/60)}h ago`;
 }
 
-// ── INIT & LOAD ───────────────────────────────────────────────
 async function init() {
   if (!agentDbId) {
-    document.getElementById('usersList').innerHTML =
-      `<div class="ph"><div class="phi">⚠️</div>No agent ID.<br/><a href="index.html">← Go back</a></div>`;
+    document.getElementById('usersList').innerHTML = `<div class="ph"><div class="phi">⚠️</div>No agent ID.<br/><a href="index.html">← Go back</a></div>`;
     return;
   }
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
     const { data: profile } = await sb.from('profiles').select('role').eq('id', session.user.id).single();
     currentUserRole = profile?.role;
-    if (currentUserRole === 'admin') {
-      document.getElementById('syncWrap').style.display = 'flex';
-    }
+    if (currentUserRole === 'admin') document.getElementById('syncWrap').style.display = 'flex';
   }
   await loadConversations();
 }
@@ -589,39 +587,21 @@ async function loadConversations() {
     allConvs = result.data.conversations || [];
     updateSyncStatus(result.data.lastSyncedAt);
     if (!allConvs.length) {
-      const msg = currentUserRole === 'admin'
-        ? 'No conversations cached yet. Click "Sync Now" to fetch from ElevenLabs.'
-        : 'No conversations available yet.';
-      document.getElementById('usersList').innerHTML =
-        `<div class="ph"><div class="phi">🌵</div>${msg}</div>`;
-      renderOverview();
-      return;
+      const msg = currentUserRole === 'admin' ? 'No conversations cached yet. Click "Sync Now" to fetch from ElevenLabs.' : 'No conversations available yet.';
+      document.getElementById('usersList').innerHTML = `<div class="ph"><div class="phi">🌵</div>${msg}</div>`;
+      renderOverview(); return;
     }
-    buildUserMap();
-    renderUsers(sortedUserNames());
-    renderOverview();
+    buildUserMap(); renderUsers(sortedUserNames()); renderOverview();
   } catch (err) {
     const isOffline = err.message.includes('fetch') || err.message.includes('Failed to fetch');
-    document.getElementById('usersList').innerHTML = `
-      <div class="ph">
-        <div class="phi">${isOffline ? '🔌' : '😬'}</div>
-        ${isOffline ? 'Backend offline.<br/>Start your backend server and refresh.' : esc(err.message)}
-      </div>`;
-    console.error('[Dashboard] loadConversations error:', err);
-  } finally {
-    document.getElementById('loadBar').classList.remove('on');
-  }
+    document.getElementById('usersList').innerHTML = `<div class="ph"><div class="phi">${isOffline ? '🔌' : '😬'}</div>${isOffline ? 'Backend offline.<br/>Start your backend server and refresh.' : esc(err.message)}</div>`;
+  } finally { document.getElementById('loadBar').classList.remove('on'); }
 }
 
 function setLoadingState(msg) {
-  document.getElementById('usersList').innerHTML = `
-    <div class="ph" style="gap:10px;display:flex;flex-direction:column;align-items:center;">
-      <div class="spinner"></div>
-      <div style="font-size:.75rem;font-weight:700;color:var(--ink2);text-align:center;">${msg}</div>
-    </div>`;
+  document.getElementById('usersList').innerHTML = `<div class="ph" style="gap:10px;display:flex;flex-direction:column;align-items:center;"><div class="spinner"></div><div style="font-size:.75rem;font-weight:700;color:var(--ink2);text-align:center;">${msg}</div></div>`;
 }
 
-// ── USER MAP ──────────────────────────────────────────────────
 function buildUserMap() {
   userMap = {}; userLatestConv = {};
   for (const row of allConvs) {
@@ -640,33 +620,27 @@ function sortedUserNames() {
   });
 }
 
-// ── OVERVIEW ──────────────────────────────────────────────────
 function renderOverview() {
   const n = allConvs.length;
-
   const durs = allConvs.map(r => r.duration_secs).filter(Boolean);
   const avgD = durs.length ? Math.round(durs.reduce((a,b)=>a+b,0) / durs.length) : 0;
-
   const tokensList = allConvs.map(rowToTokens).filter(Boolean);
-  const totInput   = tokensList.reduce((a,t) => a + t.input,  0);
-  const totOutput  = tokensList.reduce((a,t) => a + t.output, 0);
-  const totTokens  = totInput + totOutput;
-  const avgTokens  = tokensList.length ? Math.round(totTokens / tokensList.length) : 0;
-  const hasTokens  = tokensList.length > 0;
-
+  const totInput = tokensList.reduce((a,t) => a + t.input, 0);
+  const totOutput = tokensList.reduce((a,t) => a + t.output, 0);
+  const totTokens = totInput + totOutput;
+  const avgTokens = tokensList.length ? Math.round(totTokens / tokensList.length) : 0;
+  const hasTokens = tokensList.length > 0;
   const sessionCosts = allConvs.map(rowToCost).filter(Boolean);
-  const totLLM  = sessionCosts.reduce((a, s) => a + s.cost, 0);
-  const avgLLM  = sessionCosts.length ? totLLM / sessionCosts.length : null;
-  const hasLLM  = sessionCosts.length > 0;
-
+  const totLLM = sessionCosts.reduce((a, s) => a + s.cost, 0);
+  const avgLLM = sessionCosts.length ? totLLM / sessionCosts.length : null;
+  const hasLLM = sessionCosts.length > 0;
   const dollarCosts = allConvs.map(rowToLLMDollars).filter(v => v !== null);
-  const totDollars  = dollarCosts.reduce((a, v) => a + v, 0);
-  const avgDollars  = dollarCosts.length ? totDollars / dollarCosts.length : null;
-  const hasDollars  = dollarCosts.length > 0;
+  const totDollars = dollarCosts.reduce((a, v) => a + v, 0);
+  const avgDollars = dollarCosts.length ? totDollars / dollarCosts.length : null;
+  const hasDollars = dollarCosts.length > 0;
 
   document.getElementById('sv1').textContent = n || '0';
   document.getElementById('sv2').textContent = fmtDur(avgD);
-
   if (hasTokens) {
     document.getElementById('sv3').textContent    = fmtTokens(totTokens);
     document.getElementById('sv3sub').textContent = `${fmtTokens(totInput)} in · ${fmtTokens(totOutput)} out`;
@@ -676,14 +650,12 @@ function renderOverview() {
     document.getElementById('sv3sub').textContent = 'sync again to get token data';
     document.getElementById('sv4').textContent    = '—';
   }
-
   document.getElementById('sv5').textContent    = hasDollars ? (fmtDollars(totDollars) || '—') : (hasLLM ? fmtCost(totLLM) : '—');
   document.getElementById('sv5sub').textContent = hasDollars ? `${Math.round(totLLM)} cr total` : (hasLLM ? 'ElevenLabs credits' : 'sync again to get cost data');
   document.getElementById('sv6').textContent    = hasDollars ? (fmtDollars(avgDollars) || '—') : (avgLLM !== null ? fmtCost(avgLLM) : '—');
   const sv6sub = document.getElementById('sv6sub');
   if (sv6sub) sv6sub.textContent = hasDollars ? `${Math.round(avgLLM || 0)} cr avg` : 'per session';
   document.getElementById('llmLegend').style.display = hasLLM ? 'flex' : 'none';
-
   renderChart(hasLLM);
 }
 
@@ -698,11 +670,10 @@ function renderChart(hasLLM) {
     const sess = rowToCost(row);
     if (sess) buckets[sk].llm += sess.cost;
   }
-  const keys   = Object.keys(buckets).sort();
+  const keys = Object.keys(buckets).sort();
   const labels = keys.map(k => buckets[k].lbl);
   const counts = keys.map(k => buckets[k].n);
   const llmVs  = keys.map(k => parseFloat(buckets[k].llm.toFixed(5)));
-
   if (chartInst) { chartInst.destroy(); chartInst = null; }
   const ctx = document.getElementById('mainChart').getContext('2d');
   chartInst = new Chart(ctx, {
@@ -710,19 +681,8 @@ function renderChart(hasLLM) {
     data: {
       labels,
       datasets: [
-        {
-          label:'Sessions', data:counts,
-          borderColor:'#9b7ff4', backgroundColor:'rgba(155,127,244,0.08)',
-          borderWidth:2.5, pointBackgroundColor:'#9b7ff4',
-          pointRadius:4, pointHoverRadius:6, tension:0.35, fill:true, yAxisID:'y',
-        },
-        ...(hasLLM ? [{
-          label:'LLM Credits', data:llmVs,
-          borderColor:'#ff8c6b', backgroundColor:'rgba(255,140,107,0.07)',
-          borderWidth:2, pointBackgroundColor:'#ff8c6b',
-          pointRadius:4, pointHoverRadius:6, tension:0.35, fill:true,
-          borderDash:[5,4], yAxisID:'y2',
-        }] : []),
+        { label:'Sessions', data:counts, borderColor:'#9b7ff4', backgroundColor:'rgba(155,127,244,0.08)', borderWidth:2.5, pointBackgroundColor:'#9b7ff4', pointRadius:4, pointHoverRadius:6, tension:0.35, fill:true, yAxisID:'y' },
+        ...(hasLLM ? [{ label:'LLM Credits', data:llmVs, borderColor:'#ff8c6b', backgroundColor:'rgba(255,140,107,0.07)', borderWidth:2, pointBackgroundColor:'#ff8c6b', pointRadius:4, pointHoverRadius:6, tension:0.35, fill:true, borderDash:[5,4], yAxisID:'y2' }] : []),
       ],
     },
     options: {
@@ -730,15 +690,7 @@ function renderChart(hasLLM) {
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},
-        tooltip:{
-          backgroundColor:'#fff', borderColor:'#ede9e4', borderWidth:1.5,
-          titleColor:'#2d2926', bodyColor:'#6b6560', padding:12, cornerRadius:10,
-          titleFont:{family:'Nunito',weight:'800',size:12},
-          bodyFont:{family:'Nunito',weight:'600',size:11},
-          callbacks:{label:ctx=>ctx.dataset.label==='LLM Credits'
-            ? `  LLM Credits: ${Math.round(ctx.parsed.y)}`
-            : `  Sessions: ${ctx.parsed.y}`},
-        },
+        tooltip:{ backgroundColor:'#fff', borderColor:'#ede9e4', borderWidth:1.5, titleColor:'#2d2926', bodyColor:'#6b6560', padding:12, cornerRadius:10, titleFont:{family:'Nunito',weight:'800',size:12}, bodyFont:{family:'Nunito',weight:'600',size:11}, callbacks:{label:ctx=>ctx.dataset.label==='LLM Credits'?`  LLM Credits: ${Math.round(ctx.parsed.y)}`:`  Sessions: ${ctx.parsed.y}`} },
       },
       scales:{
         x:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{font:{family:'Nunito',weight:'700',size:10},color:'#aba49c'}},
@@ -749,25 +701,18 @@ function renderChart(hasLLM) {
   });
 }
 
-// ── RENDER USERS ──────────────────────────────────────────────
 function renderUsers(names) {
   const el = document.getElementById('usersList');
   if (!names.length) { el.innerHTML=`<div class="ph"><div class="phi">🔍</div>No users match!</div>`; return; }
   el.innerHTML = `<div class="users-header">👥 Users (${names.length})</div>`;
   names.forEach((name, i) => {
-    const convs     = userMap[name] || [];
-    const latestTs  = userLatestConv[name];
+    const convs = userMap[name] || [];
+    const latestTs = userLatestConv[name];
     const latestStr = latestTs ? dayLabelShort(latestTs) : '—';
     const div = document.createElement('div');
     div.className = 'user-row slide-up' + (name===activeUser?' active':'');
     div.style.animationDelay = (i * 22) + 'ms';
-    div.innerHTML = `
-      <div class="u-av">${esc(initials(name))}</div>
-      <div class="u-info">
-        <div class="u-name">${esc(name)}</div>
-        <div class="u-meta">${convs.length} session${convs.length!==1?'s':''} · last ${latestStr}</div>
-      </div>
-      <div class="u-badge">${convs.length}</div>`;
+    div.innerHTML = `<div class="u-av">${esc(initials(name))}</div><div class="u-info"><div class="u-name">${esc(name)}</div><div class="u-meta">${convs.length} session${convs.length!==1?'s':''} · last ${latestStr}</div></div><div class="u-badge">${convs.length}</div>`;
     div.onclick = () => selectUser(name);
     el.appendChild(div);
   });
@@ -778,19 +723,13 @@ function filterUsers() {
   renderUsers(sortedUserNames().filter(n => n.toLowerCase().includes(q)));
 }
 
-// ── SELECT USER ───────────────────────────────────────────────
 function selectUser(name) {
   activeUser = name; activeConv = null; activeDayFilter = null;
-  document.querySelectorAll('.user-row').forEach(r =>
-    r.classList.toggle('active', r.querySelector('.u-name')?.textContent === name));
+  document.querySelectorAll('.user-row').forEach(r => r.classList.toggle('active', r.querySelector('.u-name')?.textContent === name));
   const convs = userMap[name] || [];
-  buildDateFilter(convs);
-  renderTimeline(convs);
-  showHint();
-  switchTab('ch');
+  buildDateFilter(convs); renderTimeline(convs); showHint(); switchTab('ch');
 }
 
-// ── DATE FILTER ───────────────────────────────────────────────
 function buildDateFilter(convs) {
   const bar = document.getElementById('dfbar'), dm = {};
   for (const r of convs) { const u=r.start_time_unix; if(!u)continue; const k=daySort(u); if(!dm[k])dm[k]=dayLabelShort(u); }
@@ -801,7 +740,7 @@ function buildDateFilter(convs) {
   ac.className='df-chip all active'; ac.textContent=`All (${convs.length})`;
   ac.onclick=()=>applyDayFilter(null,convs); bar.appendChild(ac);
   days.forEach(k => {
-    const cnt  = convs.filter(r=>daySort(r.start_time_unix)===k).length;
+    const cnt = convs.filter(r=>daySort(r.start_time_unix)===k).length;
     const chip = document.createElement('div');
     chip.className='df-chip'; chip.dataset.day=k;
     chip.textContent=`${dm[k]} (${cnt})`;
@@ -817,12 +756,10 @@ function applyDayFilter(dk, all) {
   showHint();
 }
 
-// ── TIMELINE ─────────────────────────────────────────────────
 function renderTimeline(rows) {
   const scr = document.getElementById('tlScroll');
   document.getElementById('tlCnt').textContent = `${rows.length} session${rows.length!==1?'s':''}`;
   if (!rows.length) { scr.innerHTML=`<div class="center-state"><div class="cs-icon">📭</div><div class="cs-title">No sessions</div></div>`; return; }
-
   const groups = {};
   for (const r of rows) {
     const k=daySort(r.start_time_unix), l=dayLabel(r.start_time_unix);
@@ -838,28 +775,14 @@ function renderTimeline(rows) {
     grp.className='day-grp slide-up'; grp.style.animationDelay=(di*40)+'ms';
     grp.innerHTML=`<div class="day-strip"><div class="day-pill">${esc(l)}</div><div class="day-line"></div><div class="day-n">${dc.length}</div></div>`;
     dc.forEach((r, ci) => {
-      const u    = r.start_time_unix;
-      const tok  = rowToTokens(r);
-      const sess = rowToCost(r);
-      const ls   = sess ? fmtCost(sess.cost) : null;
-      const tr   = rowToTranscript(r);
-      const prev = tr.find(t=>t.role==='user')?.message || 'No preview';
+      const u = r.start_time_unix, tok = rowToTokens(r), sess = rowToCost(r);
+      const ls = sess ? fmtCost(sess.cost) : null;
+      const tr = rowToTranscript(r), prev = tr.find(t=>t.role==='user')?.message || 'No preview';
       const card = document.createElement('div');
       card.className='sess-card slide-up'+(r.conversation_id===activeConv?' active':'');
       card.style.animationDelay=(di*40+ci*18)+'ms';
       const userTurns = tr.filter(t=>t.role==='user').length;
-      card.innerHTML=`
-        <div class="sc-top">
-          <div class="sc-time">${fmtTime(u)}</div>
-          <div class="sc-stat ${stClass(r.status)}">${r.status||'—'}</div>
-        </div>
-        <div class="sc-prev">${esc(prev)}</div>
-        <div class="sc-chips">
-          ${r.duration_secs?`<span class="sc-chip">⏱ ${fmtDur(r.duration_secs)}</span>`:''}
-          ${userTurns?`<span class="sc-chip">💬 ${userTurns} quer${userTurns!==1?'ies':'y'}</span>`:''}
-          ${tok?`<span class="sc-chip">🔢 ${fmtTokens(tok.total)}</span>`:''}
-          ${ls?`<span class="sc-chip llm">💰 ${ls}</span>`:''}
-        </div>`;
+      card.innerHTML=`<div class="sc-top"><div class="sc-time">${fmtTime(u)}</div><div class="sc-stat ${stClass(r.status)}">${r.status||'—'}</div></div><div class="sc-prev">${esc(prev)}</div><div class="sc-chips">${r.duration_secs?`<span class="sc-chip">⏱ ${fmtDur(r.duration_secs)}</span>`:''}${userTurns?`<span class="sc-chip">💬 ${userTurns} quer${userTurns!==1?'ies':'y'}</span>`:''}${tok?`<span class="sc-chip">🔢 ${fmtTokens(tok.total)}</span>`:''}${ls?`<span class="sc-chip llm">💰 ${ls}</span>`:''}</div>`;
       card.onclick = () => openTranscript(r, activeUser, card);
       grp.appendChild(card);
     });
@@ -867,7 +790,6 @@ function renderTimeline(rows) {
   });
 }
 
-// ── TRANSCRIPT ────────────────────────────────────────────────
 function openTranscript(row, userName, cardEl) {
   document.querySelectorAll('.sess-card').forEach(c=>c.classList.remove('active'));
   cardEl.classList.add('active');
@@ -876,29 +798,23 @@ function openTranscript(row, userName, cardEl) {
 }
 
 function renderTranscript(row, userName) {
-  const tr    = rowToTranscript(row);
+  const tr = rowToTranscript(row);
   const dName = userName || extractUserName(row) || 'User';
-  const ini   = initials(dName);
-  const tok     = rowToTokens(row);
-  const cost    = rowToCost(row);
-  const dollars = rowToLLMDollars(row);
+  const ini = initials(dName);
+  const tok = rowToTokens(row), cost = rowToCost(row), dollars = rowToLLMDollars(row);
 
   const ipRows = [
-    { label:'Conversation ID', value: row.conversation_id,                                                                                mono:true, small:true },
-    { label:'Status',          value: `<span class="sc-stat ${stClass(row.status)}" style="font-size:.65rem">${row.status||'—'}</span>`, html:true },
-    { label:'Date',            value: row.start_time_unix ? fmtDate(row.start_time_unix) : '—' },
-    { label:'Time',            value: row.start_time_unix ? fmtTime(row.start_time_unix) : '—' },
-    { label:'Duration',        value: fmtDur(row.duration_secs) },
-    { label:'Call Cost',       value: row.cost     != null ? Math.round(Number(row.cost))     + ' credits' : '—' },
-    { label:'LLM Credits',     value: row.llm_cost != null ? Math.round(Number(row.llm_cost)) + ' credits' : '—' },
-    { label:'LLM Cost',        value: dollars      != null ? '$' + Number(dollars).toFixed(5) : '—' },
+    { label:'Conversation ID',    value: row.conversation_id, mono:true, small:true },
+    { label:'Status',             value: `<span class="sc-stat ${stClass(row.status)}" style="font-size:.65rem">${row.status||'—'}</span>`, html:true },
+    { label:'Date',               value: row.start_time_unix ? fmtDate(row.start_time_unix) : '—' },
+    { label:'Time',               value: row.start_time_unix ? fmtTime(row.start_time_unix) : '—' },
+    { label:'Duration',           value: fmtDur(row.duration_secs) },
+    { label:'Call Cost',          value: row.cost     != null ? Math.round(Number(row.cost))     + ' credits' : '—' },
+    { label:'LLM Credits',        value: row.llm_cost != null ? Math.round(Number(row.llm_cost)) + ' credits' : '—' },
+    { label:'LLM Cost',           value: dollars      != null ? '$' + Number(dollars).toFixed(5) : '—' },
     { label:'Primary Question',   value: row.primary_question || '—' },
-    { label:'KB Questions',       value: row.kb_question_list
-        ? (Array.isArray(row.kb_question_list) ? row.kb_question_list.join(', ') : JSON.stringify(row.kb_question_list))
-        : '—', small:true },
-    { label:'Non-KB Questions',   value: row.non_kb_question_list
-        ? (Array.isArray(row.non_kb_question_list) ? row.non_kb_question_list.join(', ') : JSON.stringify(row.non_kb_question_list))
-        : '—', small:true },
+    { label:'KB Questions',       value: row.kb_question_list ? (Array.isArray(row.kb_question_list) ? row.kb_question_list.join(', ') : JSON.stringify(row.kb_question_list)) : '—', small:true },
+    { label:'Non-KB Questions',   value: row.non_kb_question_list ? (Array.isArray(row.non_kb_question_list) ? row.non_kb_question_list.join(', ') : JSON.stringify(row.non_kb_question_list)) : '—', small:true },
   ];
 
   document.getElementById('ipBody').innerHTML = `
@@ -907,11 +823,7 @@ function renderTranscript(row, userName) {
       <div class="ip-uname">${esc(dName)}</div>
     </div>
     <div class="ip-divider"></div>
-    ${ipRows.map(r=>`
-      <div class="ip-row">
-        <div class="ip-lbl">${r.label}</div>
-        <div class="ip-val${r.mono?' mono':''}${r.small?' ip-val-sm':''}">${r.html?r.value:esc(String(r.value))}</div>
-      </div>`).join('')}`;
+    ${ipRows.map(r=>`<div class="ip-row"><div class="ip-lbl">${r.label}</div><div class="ip-val${r.mono?' mono':''}${r.small?' ip-val-sm':''}">${r.html?r.value:esc(String(r.value))}</div></div>`).join('')}`;
 
   const panel = document.getElementById('trPanel');
   panel.className = 'tr-panel pop-in';
@@ -924,31 +836,19 @@ function renderTranscript(row, userName) {
           <div class="tr-id">${esc(row.conversation_id)}</div>
         </div>
       </div>
-      ${tok ? `
-      <div class="tr-chips">
-        <div class="tr-chip llm">🔢 ${fmtTokens(tok.input)} in · ${fmtTokens(tok.output)} out</div>
-        ${cost ? `<div class="tr-chip llm">💰 ${fmtCost(cost.cost)}</div>` : ''}
-      </div>` : ''}
+      ${tok ? `<div class="tr-chips"><div class="tr-chip llm">🔢 ${fmtTokens(tok.input)} in · ${fmtTokens(tok.output)} out</div>${cost ? `<div class="tr-chip llm">💰 ${fmtCost(cost.cost)}</div>` : ''}</div>` : ''}
     </div>
     <div class="msgs" id="msgsBox"></div>`;
 
   const box = document.getElementById('msgsBox');
-  if (!tr.length) {
-    box.innerHTML=`<div class="center-state"><div class="cs-icon">📭</div><div class="cs-title">No messages</div></div>`;
-    return;
-  }
+  if (!tr.length) { box.innerHTML=`<div class="center-state"><div class="cs-icon">📭</div><div class="cs-title">No messages</div></div>`; return; }
   tr.forEach((t, i) => {
     const isUser = t.role === 'user', ts = t.time_in_call_secs;
-    const tStr   = ts != null ? `${String(Math.floor(ts/60)).padStart(2,'0')}:${String(ts%60).padStart(2,'0')}` : null;
-    const row2   = document.createElement('div');
+    const tStr = ts != null ? `${String(Math.floor(ts/60)).padStart(2,'0')}:${String(ts%60).padStart(2,'0')}` : null;
+    const row2 = document.createElement('div');
     row2.className = `msg-wrap ${isUser?'user':'agent'} slide-up`;
     row2.style.animationDelay = Math.min(i*12,300)+'ms';
-    row2.innerHTML = `
-      <div class="msg-av ${isUser?'ut':'at'}">${isUser?esc(ini):'🤖'}</div>
-      <div class="msg-col">
-        <div class="msg-who">${isUser?esc(dName):'Agent'}${tStr?` · ${tStr}`:''}</div>
-        <div class="msg-bub">${esc(t.message||t.text||'')}</div>
-      </div>`;
+    row2.innerHTML = `<div class="msg-av ${isUser?'ut':'at'}">${isUser?esc(ini):'🤖'}</div><div class="msg-col"><div class="msg-who">${isUser?esc(dName):'Agent'}${tStr?` · ${tStr}`:''}</div><div class="msg-bub">${esc(t.message||t.text||'')}</div></div>`;
     box.appendChild(row2);
   });
   box.scrollTop = 0;
@@ -967,14 +867,12 @@ document.addEventListener('keydown', e => {
 let _exportRange = 'week';
 
 function openExportModal() {
-  const now   = new Date();
+  const now = new Date();
   const from7 = new Date(now); from7.setDate(now.getDate() - 7);
   document.getElementById('exportFrom').value = from7.toISOString().slice(0,10);
   document.getElementById('exportTo').value   = now.toISOString().slice(0,10);
   _exportRange = 'week';
-  document.querySelectorAll('.export-range-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.range === 'week')
-  );
+  document.querySelectorAll('.export-range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === 'week'));
   document.getElementById('exportCustomDates').style.display = 'none';
   _updateExportCount();
   document.getElementById('exportModal').style.display = 'flex';
@@ -996,17 +894,14 @@ function _getExportBounds() {
   const now = new Date();
   let from, to;
   if (_exportRange === 'week') {
-    to   = now;
-    from = new Date(now); from.setDate(now.getDate() - 7);
+    to = now; from = new Date(now); from.setDate(now.getDate() - 7);
   } else if (_exportRange === 'month') {
-    to   = now;
-    from = new Date(now); from.setDate(now.getDate() - 30);
+    to = now; from = new Date(now); from.setDate(now.getDate() - 30);
   } else {
     const fv = document.getElementById('exportFrom').value;
     const tv = document.getElementById('exportTo').value;
     if (!fv || !tv) return null;
-    from = new Date(fv);
-    to   = new Date(tv); to.setHours(23,59,59,999);
+    from = new Date(fv); to = new Date(tv); to.setHours(23,59,59,999);
   }
   return { fromUnix: Math.floor(from.getTime()/1000), toUnix: Math.floor(to.getTime()/1000) };
 }
@@ -1014,25 +909,18 @@ function _getExportBounds() {
 function _getFilteredRows() {
   const bounds = _getExportBounds();
   if (!bounds) return [];
-  return allConvs.filter(r => {
-    const t = r.start_time_unix;
-    return t != null && t >= bounds.fromUnix && t <= bounds.toUnix;
-  });
+  return allConvs.filter(r => { const t = r.start_time_unix; return t != null && t >= bounds.fromUnix && t <= bounds.toUnix; });
 }
 
 function _updateExportCount() {
-  const el   = document.getElementById('exportRowCount');
+  const el = document.getElementById('exportRowCount');
   const rows = _getFilteredRows();
-  el.textContent = rows.length
-    ? `${rows.length} conversation${rows.length !== 1 ? 's' : ''} will be exported`
-    : 'No conversations in this range';
+  el.textContent = rows.length ? `${rows.length} conversation${rows.length !== 1 ? 's' : ''} will be exported` : 'No conversations in this range';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   ['exportFrom','exportTo'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', () => {
-      if (_exportRange === 'custom') _updateExportCount();
-    });
+    document.getElementById(id)?.addEventListener('change', () => { if (_exportRange === 'custom') _updateExportCount(); });
   });
 });
 
@@ -1042,40 +930,65 @@ function _escapeCsv(val) {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
 }
 
+function _fmtList(val) {
+  if (!val) return '';
+  if (Array.isArray(val)) return val.join('; ');
+  if (typeof val === 'string') return val;
+  try { return JSON.parse(val).join('; '); } catch { return String(val); }
+}
+
 function downloadExportCsv() {
   const rows = _getFilteredRows();
   if (!rows.length) { alert('No conversations found for the selected range.'); return; }
 
-  const header = ['User Name', 'Date', 'Transcript Summary'];
-  const lines  = [header.join(',')];
+  // Read which fields are checked
+  const inclName    = document.getElementById('ef-name').checked;
+  const inclDate    = document.getElementById('ef-date').checked;
+  const inclSummary = document.getElementById('ef-summary').checked;
+  const inclKb      = document.getElementById('ef-kb').checked;
+  const inclNonKb   = document.getElementById('ef-nonkb').checked;
+
+  const header = [
+    ...(inclName    ? ['User Name']           : []),
+    ...(inclDate    ? ['Date']                : []),
+    ...(inclSummary ? ['Transcript Summary']  : []),
+    ...(inclKb      ? ['KB Questions']        : []),
+    ...(inclNonKb   ? ['Non-KB Questions']    : []),
+  ];
+
+  if (!header.length) { alert('Please select at least one field to export.'); return; }
+
+  const lines = [header.join(',')];
 
   rows.forEach(r => {
     const name    = extractUserName(r) || r.user_name || '';
     const date    = r.start_time_unix
-      ? new Date(r.start_time_unix * 1000).toLocaleString('en-IN', {
-          day:'2-digit', month:'short', year:'numeric',
-          hour:'2-digit', minute:'2-digit'
-        })
+      ? new Date(r.start_time_unix * 1000).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
       : '';
     const summary = r.transcript_summary || '';
-    lines.push([_escapeCsv(name), _escapeCsv(date), _escapeCsv(summary)].join(','));
+    const kb      = _fmtList(r.kb_question_list);
+    const nonKb   = _fmtList(r.non_kb_question_list);
+
+    const cols = [
+      ...(inclName    ? [_escapeCsv(name)]    : []),
+      ...(inclDate    ? [_escapeCsv(date)]    : []),
+      ...(inclSummary ? [_escapeCsv(summary)] : []),
+      ...(inclKb      ? [_escapeCsv(kb)]      : []),
+      ...(inclNonKb   ? [_escapeCsv(nonKb)]   : []),
+    ];
+    lines.push(cols.join(','));
   });
 
-  const csv  = '\uFEFF' + lines.join('\r\n'); // BOM prefix for Excel UTF-8 compatibility
+  const csv  = '\uFEFF' + lines.join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-
   const bounds   = _getExportBounds();
   const fromDate = bounds ? new Date(bounds.fromUnix*1000).toISOString().slice(0,10) : 'export';
   const toDate   = bounds ? new Date(bounds.toUnix*1000).toISOString().slice(0,10)   : '';
-
-  a.href     = url;
-  a.download = `chat-history_${fromDate}_to_${toDate}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = `chat-history_${fromDate}_to_${toDate}.csv`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
   closeExportModal();
 }
 
