@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Indoo — Admin Panel</title>
+  <title>Conversation Intelligence— Admin Panel</title>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -25,21 +25,13 @@
     body.ready{visibility:visible;}
 
     /* TOPBAR */
-    .topbar{
-      position:sticky;top:0;z-index:50;height:62px;
-      background:var(--white);border-bottom:1.5px solid var(--border);
-      display:flex;align-items:center;padding:0 32px;gap:14px;
-    }
+    .topbar{position:sticky;top:0;z-index:50;height:62px;background:var(--white);border-bottom:1.5px solid var(--border);display:flex;align-items:center;padding:0 32px;gap:14px;}
     .logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;}
     .logo-icon{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--peach),var(--lav));display:flex;align-items:center;justify-content:center;font-size:1.1rem;box-shadow:0 3px 10px rgba(155,127,244,.3);}
     .logo-name{font-size:1rem;font-weight:900;letter-spacing:-.03em;}
     .logo-badge{font-size:.58rem;font-weight:800;background:var(--rose-l);color:var(--rose);border:1.5px solid var(--rose-m);padding:2px 8px;border-radius:50px;margin-left:4px;}
     .topbar-right{display:flex;align-items:center;gap:10px;margin-left:auto;}
-    .nav-link{
-      padding:7px 16px;border-radius:50px;font-size:.78rem;font-weight:700;
-      color:var(--ink2);border:1.5px solid var(--border);background:var(--bg);
-      cursor:pointer;text-decoration:none;transition:all .15s;
-    }
+    .nav-link{padding:7px 16px;border-radius:50px;font-size:.78rem;font-weight:700;color:var(--ink2);border:1.5px solid var(--border);background:var(--bg);cursor:pointer;text-decoration:none;transition:all .15s;}
     .nav-link:hover{border-color:var(--lav-m);color:var(--lav);background:var(--lav-l);}
     .user-chip{display:flex;align-items:center;gap:7px;padding:5px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:50px;}
     .user-av{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,var(--peach-m),var(--lav-m));display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;color:var(--lav);}
@@ -58,29 +50,15 @@
 
     /* SECTION */
     .section{background:var(--white);border:1.5px solid var(--border);border-radius:20px;margin-bottom:24px;overflow:hidden;box-shadow:var(--shadow-s);}
-    .section-hd{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:18px 24px;border-bottom:1.5px solid var(--border);
-    }
+    .section-hd{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1.5px solid var(--border);}
     .section-title{font-size:.85rem;font-weight:900;color:var(--ink);}
     .section-sub{font-size:.68rem;color:var(--ink3);font-weight:500;margin-top:2px;}
-    .add-btn{
-      display:flex;align-items:center;gap:6px;padding:8px 18px;
-      background:linear-gradient(135deg,var(--peach),var(--lav));
-      border:none;border-radius:50px;color:#fff;
-      font-family:'Nunito',sans-serif;font-weight:800;font-size:.78rem;
-      cursor:pointer;box-shadow:0 2px 8px rgba(155,127,244,.3);transition:all .15s;
-    }
+    .add-btn{display:flex;align-items:center;gap:6px;padding:8px 18px;background:linear-gradient(135deg,var(--peach),var(--lav));border:none;border-radius:50px;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:.78rem;cursor:pointer;box-shadow:0 2px 8px rgba(155,127,244,.3);transition:all .15s;}
     .add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(155,127,244,.4);}
 
     /* TABLE */
     .tbl{width:100%;border-collapse:collapse;}
-    .tbl th{
-      padding:11px 20px;text-align:left;
-      font-size:.62rem;font-weight:800;color:var(--ink3);
-      text-transform:uppercase;letter-spacing:.08em;
-      border-bottom:1.5px solid var(--border);background:var(--bg);
-    }
+    .tbl th{padding:11px 20px;text-align:left;font-size:.62rem;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1.5px solid var(--border);background:var(--bg);}
     .tbl td{padding:13px 20px;border-bottom:1px solid var(--border);font-size:.82rem;font-weight:600;vertical-align:middle;}
     .tbl tr:last-child td{border-bottom:none;}
     .tbl tbody tr{transition:background .12s;}
@@ -90,17 +68,10 @@
     .role-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:50px;font-size:.65rem;font-weight:800;border:1.5px solid;}
     .role-admin{background:var(--lav-l);color:var(--lav);border-color:var(--lav-m);}
     .role-client{background:var(--sky-l);color:var(--sky);border-color:var(--sky-m);}
-    .status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:50px;font-size:.65rem;font-weight:800;border:1.5px solid;}
-    .status-active{background:var(--mint-l);color:#166534;border-color:var(--mint-m);}
-    .status-pending{background:var(--amber-l);color:#92400e;border-color:var(--amber-m);}
-
     .mono{font-family:'Fira Code',monospace;font-size:.7rem;color:var(--ink2);}
 
     /* ACTION BUTTONS */
-    .act-btn{
-      padding:5px 12px;border-radius:50px;font-size:.68rem;font-weight:700;
-      cursor:pointer;border:1.5px solid;transition:all .15s;
-    }
+    .act-btn{padding:5px 12px;border-radius:50px;font-size:.68rem;font-weight:700;cursor:pointer;border:1.5px solid;transition:all .15s;}
     .act-btn.edit{color:var(--lav);background:var(--lav-l);border-color:var(--lav-m);}
     .act-btn.edit:hover{background:var(--lav);color:#fff;}
     .act-btn.danger{color:var(--rose);background:var(--rose-l);border-color:var(--rose-m);}
@@ -136,7 +107,7 @@
     .btn-submit:hover{transform:translateY(-1px);box-shadow:0 5px 16px rgba(155,127,244,.4);}
     .btn-submit:disabled{opacity:.45;cursor:not-allowed;transform:none;}
 
-    /* CHECKBOXES for agent assignment */
+    /* CHECKBOXES */
     .check-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;padding:2px 0;}
     .check-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);cursor:pointer;transition:all .15s;}
     .check-item:hover{border-color:var(--lav-m);background:var(--lav-l);}
@@ -151,6 +122,58 @@
     /* TOAST */
     .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:#fff;padding:11px 22px;border-radius:50px;font-size:.8rem;font-weight:700;box-shadow:var(--shadow-l);transition:transform .3s cubic-bezier(.34,1.56,.64,1);z-index:999;pointer-events:none;}
     .toast.show{transform:translateX(-50%) translateY(0);}
+
+    /* ── SUBSCRIPTION CARDS ── */
+    .sub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;padding:20px 24px;}
+
+    .sub-card{border:1.5px solid var(--border);border-radius:16px;background:var(--bg);overflow:hidden;transition:box-shadow .15s;}
+    .sub-card:hover{box-shadow:var(--shadow-m);}
+    .sub-card.urgent {border-color:var(--rose-m);background:var(--rose-l);}
+    .sub-card.warning{border-color:var(--amber-m);background:var(--amber-l);}
+
+    .sub-card-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;}
+    .sub-key-label{font-size:.58rem;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;}
+    .sub-key-val{font-family:'Fira Code',monospace;font-size:.66rem;color:var(--ink2);margin-top:2px;}
+
+    .sub-tier-badge{padding:3px 10px;border-radius:50px;font-size:.62rem;font-weight:800;border:1.5px solid;text-transform:capitalize;flex-shrink:0;}
+    .tier-free    {background:var(--bg);color:var(--ink3);border-color:var(--border2);}
+    .tier-starter {background:var(--sky-l);color:var(--sky);border-color:var(--sky-m);}
+    .tier-creator {background:var(--lav-l);color:var(--lav);border-color:var(--lav-m);}
+    .tier-pro     {background:var(--peach-l);color:var(--peach);border-color:var(--peach-m);}
+    .tier-scale   {background:var(--mint-l);color:#166534;border-color:var(--mint-m);}
+    .tier-default {background:var(--lav-l);color:var(--lav);border-color:var(--lav-m);}
+
+    .sub-divider{height:1px;background:var(--border);margin:0 16px;}
+
+    .sub-stats{display:grid;grid-template-columns:1fr 1fr;padding:12px 16px 4px;}
+    .sub-stat{padding:5px 0;}
+    .sub-stat-label{font-size:.58rem;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;}
+    .sub-stat-val  {font-size:.86rem;font-weight:900;color:var(--ink);letter-spacing:-.02em;}
+    .sub-stat-val.dim{color:var(--ink3);font-weight:600;}
+
+    .sub-usage{padding:6px 16px 12px;}
+    .sub-usage-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
+    .sub-usage-label{font-size:.58rem;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.08em;}
+    .sub-usage-pct{font-size:.65rem;font-weight:800;color:var(--ink2);}
+    .sub-bar{height:6px;background:var(--border);border-radius:50px;overflow:hidden;}
+    .sub-bar-fill{height:100%;border-radius:50px;background:var(--lav);transition:width .4s ease;}
+    .sub-bar-fill.warn{background:var(--amber);}
+    .sub-bar-fill.crit{background:var(--rose);}
+
+    .sub-reset{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1.5px solid var(--border);}
+    .sub-reset-left{display:flex;align-items:center;gap:7px;}
+    .sub-reset-icon{font-size:.9rem;}
+    .sub-reset-text{font-size:.72rem;font-weight:700;color:var(--ink2);}
+    .sub-reset-sub {font-size:.58rem;color:var(--ink3);font-weight:600;margin-top:1px;}
+    .sub-countdown{font-size:.75rem;font-weight:900;padding:3px 10px;border-radius:50px;border:1.5px solid;}
+    .cd-ok    {color:#166534;background:var(--mint-l);border-color:var(--mint-m);}
+    .cd-warn  {color:#92400e;background:var(--amber-l);border-color:var(--amber-m);}
+    .cd-urgent{color:var(--rose);background:var(--rose-l);border-color:var(--rose-m);}
+
+    .sub-agents{padding:8px 16px 12px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--border);}
+    .sub-agent-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:50px;background:var(--white);border:1.5px solid var(--border);font-size:.62rem;font-weight:700;color:var(--ink2);}
+
+    .sub-err{padding:14px 16px;font-size:.75rem;color:var(--rose);font-weight:600;display:flex;align-items:center;gap:6px;}
   </style>
 </head>
 <body>
@@ -179,6 +202,18 @@
     </div>
   </div>
 
+  <!-- ── NEW: SUBSCRIPTION SECTION ── -->
+  <div class="section">
+    <div class="section-hd">
+      <div>
+        <div class="section-title">📊 ElevenLabs Subscriptions</div>
+        <div class="section-sub">Character usage and reset dates, grouped by API key</div>
+      </div>
+      <button class="add-btn" style="background:linear-gradient(135deg,var(--mint),var(--sky));" onclick="loadSubscriptions()">🔄 Refresh</button>
+    </div>
+    <div id="subWrap"><div class="spinner"></div></div>
+  </div>
+
   <!-- USERS SECTION -->
   <div class="section">
     <div class="section-hd">
@@ -188,9 +223,7 @@
       </div>
       <button class="add-btn" onclick="openInviteModal()">✉️ Invite User</button>
     </div>
-    <div id="usersTableWrap">
-      <div class="spinner"></div>
-    </div>
+    <div id="usersTableWrap"><div class="spinner"></div></div>
   </div>
 
   <!-- AGENTS SECTION -->
@@ -201,9 +234,7 @@
         <div class="section-sub">Control which clients can see which agents</div>
       </div>
     </div>
-    <div id="accessTableWrap">
-      <div class="spinner"></div>
-    </div>
+    <div id="accessTableWrap"><div class="spinner"></div></div>
   </div>
 </div>
 
@@ -286,25 +317,22 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ── CONFIG ──────────────────────────────────────────────────────────────────
+// ── CONFIG ────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
-
-// Backend — same values as dashboard.html and index.html
-const BACKEND_URL = 'https://agentdashboard-production-5777.up.railway.app';
-const API_SECRET  = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e';
-// ────────────────────────────────────────────────────────────────────────────
+const BACKEND_URL  = 'https://agentdashboard-production-5777.up.railway.app';
+const API_SECRET   = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e';
 
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const esc = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;') : '';
+const esc      = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;') : '';
 const initials = n => { if (!n) return '?'; const p = n.trim().split(' '); return p.length >= 2 ? (p[0][0]+p[p.length-1][0]).toUpperCase() : n.slice(0,2).toUpperCase(); };
 
-let currentUser = null;
-let allUsers    = [];
-let allAgents   = [];
-let editUserId  = null;
+let currentUser  = null;
+let allUsers     = [];
+let allAgents    = [];
+let editUserId   = null;
 let assignUserId = null;
 
 // ── BACKEND HELPER ────────────────────────────────────────────
@@ -321,13 +349,11 @@ async function backendFetch(path, options = {}) {
     },
   });
   const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data?.error?.message || `Backend error ${res.status}`);
-  }
+  if (!res.ok || !data.success) throw new Error(data?.error?.message || `Backend error ${res.status}`);
   return data;
 }
 
-// ── AUTH GUARD ───────────────────────────────────────────────────────────────
+// ── AUTH GUARD ────────────────────────────────────────────────
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { window.location.href = 'login.html'; return; }
@@ -349,9 +375,10 @@ async function init() {
 async function loadAll() {
   await Promise.all([ loadUsers(), loadAgents() ]);
   await renderAccessTable();
+  await loadSubscriptions();   // ← runs after allAgents is populated
 }
 
-// ── USERS ────────────────────────────────────────────────────────────────────
+// ── USERS ─────────────────────────────────────────────────────
 async function loadUsers() {
   const { data, error } = await sb.from('profiles').select('*').order('created_at');
   if (error) { console.error(error); return; }
@@ -367,9 +394,7 @@ function renderUsersTable() {
   }
   wrap.innerHTML = `
     <table class="tbl">
-      <thead><tr>
-        <th>User</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th>
-      </tr></thead>
+      <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
       <tbody>
         ${allUsers.map(u => `
           <tr>
@@ -396,14 +421,14 @@ function renderUsersTable() {
     </table>`;
 }
 
-// ── AGENTS ───────────────────────────────────────────────────────────────────
+// ── AGENTS ────────────────────────────────────────────────────
 async function loadAgents() {
   const { data, error } = await sb.from('agents').select('*').order('created_at');
   if (error) { console.error(error); return; }
   allAgents = data || [];
 }
 
-// ── ACCESS TABLE ─────────────────────────────────────────────────────────────
+// ── ACCESS TABLE ──────────────────────────────────────────────
 async function renderAccessTable() {
   const clients = allUsers.filter(u => u.role === 'client');
   const wrap    = document.getElementById('accessTableWrap');
@@ -411,14 +436,12 @@ async function renderAccessTable() {
     wrap.innerHTML = `<div class="tbl-empty"><div class="tbl-empty-icon">👤</div>No client users yet. Invite clients to assign agents.</div>`;
     return;
   }
-
   const { data: accessRows } = await sb.from('agent_access').select('user_id, agent_id');
   const accessMap = {};
   for (const row of (accessRows || [])) {
     if (!accessMap[row.user_id]) accessMap[row.user_id] = [];
     accessMap[row.user_id].push(row.agent_id);
   }
-
   wrap.innerHTML = `
     <table class="tbl">
       <thead><tr><th>Client</th><th>Assigned Agents</th><th>Actions</th></tr></thead>
@@ -442,19 +465,167 @@ async function renderAccessTable() {
                   </div>
                 </div>
               </td>
-              <td>
-                ${agNames || `<span style="color:var(--ink3);font-size:.75rem;">No agents assigned</span>`}
-              </td>
-              <td>
-                <button class="act-btn assign" onclick="openAssignModal('${u.id}','${esc(u.email)}')">Manage Access</button>
-              </td>
+              <td>${agNames || `<span style="color:var(--ink3);font-size:.75rem;">No agents assigned</span>`}</td>
+              <td><button class="act-btn assign" onclick="openAssignModal('${u.id}','${esc(u.email)}')">Manage Access</button></td>
             </tr>`;
         }).join('')}
       </tbody>
     </table>`;
 }
 
-// ── INVITE USER (sends real email via backend) ────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+//  SUBSCRIPTION SECTION — new, self-contained
+// ══════════════════════════════════════════════════════════════
+async function loadSubscriptions() {
+  const wrap = document.getElementById('subWrap');
+  wrap.innerHTML = '<div class="spinner"></div>';
+
+  if (!allAgents.length) {
+    wrap.innerHTML = `<div class="tbl-empty"><div class="tbl-empty-icon">🤖</div>No agents found.</div>`;
+    return;
+  }
+
+  // Group agents by unique API key (supports both field names)
+  const groups = {};
+  for (const ag of allAgents) {
+    const key = ag.xi_api_key || ag.api_key || null;
+    if (!key) continue;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(ag);
+  }
+
+  const keys = Object.keys(groups);
+  if (!keys.length) {
+    wrap.innerHTML = `<div class="tbl-empty"><div class="tbl-empty-icon">🔑</div>No API keys found on agents. Ensure agents have <code>xi_api_key</code> set.</div>`;
+    return;
+  }
+
+  // Fetch all subscriptions in parallel
+  const results = await Promise.all(
+    keys.map(async key => {
+      try {
+        const res = await fetch('https://api.elevenlabs.io/v1/user/subscription', {
+          headers: { 'xi-api-key': key }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const sub = await res.json();
+        return { key, agents: groups[key], sub, error: null };
+      } catch (err) {
+        return { key, agents: groups[key], sub: null, error: err.message };
+      }
+    })
+  );
+
+  wrap.innerHTML = `<div class="sub-grid">${results.map(renderSubCard).join('')}</div>`;
+}
+
+function renderSubCard({ key, agents, sub, error }) {
+  const maskedKey = key.length > 12 ? key.slice(0,6) + '••••••' + key.slice(-4) : '••••••••';
+  const agentChips = agents.map(a => `<span class="sub-agent-chip">${a.emoji||'🤖'} ${esc(a.name)}</span>`).join('');
+
+  if (error) {
+    return `
+      <div class="sub-card urgent">
+        <div class="sub-card-head">
+          <div><div class="sub-key-label">API Key</div><div class="sub-key-val">${esc(maskedKey)}</div></div>
+          <span class="sub-tier-badge tier-default">Error</span>
+        </div>
+        <div class="sub-err">⚠️ ${esc(error)}</div>
+        <div class="sub-agents">${agentChips}</div>
+      </div>`;
+  }
+
+  const {
+    tier = 'unknown',
+    status = '—',
+    character_count = 0,
+    character_limit = 0,
+    next_character_count_reset_unix = null,
+  } = sub;
+
+  const usedPct   = character_limit > 0 ? Math.min(100, Math.round(character_count / character_limit * 100)) : 0;
+  const remaining = Math.max(0, character_limit - character_count);
+  const barClass  = usedPct >= 90 ? 'crit' : usedPct >= 70 ? 'warn' : '';
+
+  const nowSec   = Math.floor(Date.now() / 1000);
+  const secsLeft = next_character_count_reset_unix ? Math.max(0, next_character_count_reset_unix - nowSec) : null;
+  const daysLeft = secsLeft !== null ? Math.ceil(secsLeft / 86400) : null;
+  const resetDate = next_character_count_reset_unix
+    ? new Date(next_character_count_reset_unix * 1000).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })
+    : '—';
+
+  const cardClass = daysLeft !== null && daysLeft <= 3 ? 'urgent'
+                  : daysLeft !== null && daysLeft <= 7 ? 'warning' : '';
+  const cdClass   = daysLeft !== null && daysLeft <= 3 ? 'cd-urgent'
+                  : daysLeft !== null && daysLeft <= 7 ? 'cd-warn' : 'cd-ok';
+  const tierClass = ['free','starter','creator','pro','scale'].includes(tier) ? `tier-${tier}` : 'tier-default';
+
+  const fmtN = n => n >= 1_000_000 ? (n/1_000_000).toFixed(2)+'M'
+                  : n >= 1_000     ? (n/1_000).toFixed(1)+'K'
+                  : String(n);
+
+  const cdLabel = daysLeft === null ? '—' : daysLeft === 0 ? 'Today' : daysLeft === 1 ? '1 day' : `${daysLeft} days`;
+
+  return `
+    <div class="sub-card ${cardClass}">
+
+      <div class="sub-card-head">
+        <div>
+          <div class="sub-key-label">API Key</div>
+          <div class="sub-key-val">${esc(maskedKey)}</div>
+        </div>
+        <span class="sub-tier-badge ${tierClass}">${esc(tier)}</span>
+      </div>
+      <div class="sub-divider"></div>
+
+      <div class="sub-stats">
+        <div class="sub-stat">
+          <div class="sub-stat-label">Used</div>
+          <div class="sub-stat-val">${fmtN(character_count)}</div>
+        </div>
+        <div class="sub-stat">
+          <div class="sub-stat-label">Limit</div>
+          <div class="sub-stat-val">${fmtN(character_limit)}</div>
+        </div>
+        <div class="sub-stat">
+          <div class="sub-stat-label">Remaining</div>
+          <div class="sub-stat-val ${remaining === 0 ? 'dim' : ''}">${fmtN(remaining)}</div>
+        </div>
+        <div class="sub-stat">
+          <div class="sub-stat-label">Status</div>
+          <div class="sub-stat-val" style="font-size:.72rem;text-transform:capitalize;">${esc(status)}</div>
+        </div>
+      </div>
+
+      <div class="sub-usage">
+        <div class="sub-usage-row">
+          <div class="sub-usage-label">Usage</div>
+          <div class="sub-usage-pct">${usedPct}%</div>
+        </div>
+        <div class="sub-bar">
+          <div class="sub-bar-fill ${barClass}" style="width:${usedPct}%"></div>
+        </div>
+      </div>
+
+      <div class="sub-reset">
+        <div class="sub-reset-left">
+          <div class="sub-reset-icon">🔄</div>
+          <div>
+            <div class="sub-reset-text">Resets ${esc(resetDate)}</div>
+            <div class="sub-reset-sub">Characters refill at reset</div>
+          </div>
+        </div>
+        <div class="sub-countdown ${cdClass}">${cdLabel}</div>
+      </div>
+
+      <div class="sub-agents">${agentChips}</div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ORIGINAL FUNCTIONS — UNTOUCHED
+// ══════════════════════════════════════════════════════════════
+
 function openInviteModal() {
   document.getElementById('inv-email').value = '';
   document.getElementById('inv-role').value  = 'client';
@@ -468,26 +639,17 @@ async function inviteUser() {
   const email = document.getElementById('inv-email').value.trim();
   const role  = document.getElementById('inv-role').value;
   if (!email) { showModalErr('invErr', 'Please enter an email'); return; }
-
   const btn = document.getElementById('btnInvite');
   btn.disabled = true; btn.textContent = 'Sending…';
-
   try {
-    // Insert directly into pending_invites via Supabase
     const { error } = await sb.from('pending_invites').insert({ email, role });
     if (error) throw new Error(error.message);
-
     document.getElementById('invErr').style.display = 'none';
     const okEl = document.getElementById('invOk');
     okEl.textContent = `✓ Invite recorded for ${email}`;
     okEl.style.display = 'block';
-
     btn.textContent = 'Sent ✓';
-    setTimeout(() => {
-      closeModals();
-      showToast(`Invite sent to ${email}`);
-    }, 1800);
-
+    setTimeout(() => { closeModals(); showToast(`Invite sent to ${email}`); }, 1800);
     await loadUsers();
   } catch (err) {
     showModalErr('invErr', err.message);
@@ -495,11 +657,10 @@ async function inviteUser() {
   }
 }
 
-// ── ROLE EDIT ─────────────────────────────────────────────────────────────────
 function openRoleModal(id, email, role) {
   editUserId = id;
-  document.getElementById('role-email').value   = email;
-  document.getElementById('role-select').value  = role;
+  document.getElementById('role-email').value  = email;
+  document.getElementById('role-select').value = role;
   document.getElementById('roleErr').style.display = 'none';
   document.getElementById('roleOverlay').classList.add('open');
 }
@@ -514,18 +675,15 @@ async function saveRole() {
   await loadAll();
 }
 
-// ── ASSIGN AGENTS ─────────────────────────────────────────────────────────────
 async function openAssignModal(userId, email) {
   assignUserId = userId;
   document.getElementById('assign-email').value = email;
   document.getElementById('assignErr').style.display = 'none';
-
   const { data: current } = await sb.from('agent_access').select('agent_id').eq('user_id', userId);
   const assigned = new Set((current || []).map(r => r.agent_id));
-
   const list = document.getElementById('checkList');
   if (!allAgents.length) {
-    list.innerHTML = '<div style="color:var(--ink3);font-size:.8rem;padding:8px;">No agents added yet. Add agents from the main page first.</div>';
+    list.innerHTML = '<div style="color:var(--ink3);font-size:.8rem;padding:8px;">No agents added yet.</div>';
   } else {
     list.innerHTML = allAgents.map(ag => `
       <label class="check-item ${assigned.has(ag.id) ? 'checked' : ''}" id="ci-${ag.id}">
@@ -548,7 +706,6 @@ async function saveAssign() {
   const checked = [...document.querySelectorAll('#checkList input[type=checkbox]:checked')].map(el => el.value);
   const btn = document.getElementById('btnAssign');
   btn.disabled = true; btn.textContent = 'Saving…';
-
   await sb.from('agent_access').delete().eq('user_id', assignUserId);
   if (checked.length) {
     const rows = checked.map(agent_id => ({ user_id: assignUserId, agent_id }));
@@ -559,7 +716,6 @@ async function saveAssign() {
   await loadAll();
 }
 
-// ── DELETE USER ───────────────────────────────────────────────────────────────
 async function deleteUser(id) {
   if (!confirm('Remove this user? They will lose access to the dashboard.')) return;
   await sb.from('agent_access').delete().eq('user_id', id);
@@ -568,7 +724,6 @@ async function deleteUser(id) {
   await loadAll();
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
 function closeModals() {
   document.querySelectorAll('.overlay').forEach(o => o.classList.remove('open'));
   document.querySelectorAll('.btn-submit').forEach(b => { b.disabled = false; });
