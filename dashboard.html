@@ -7,6 +7,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- SheetJS for XLSX export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="dashboard.css" />
   <style>
     .table-card { opacity:1!important;transform:none!important;animation:none!important;overflow:visible!important; }
@@ -49,7 +51,6 @@
     .resync-btn:hover{background:var(--amber);color:#fff;}
     .resync-btn:disabled{opacity:.5;cursor:not-allowed;}
 
-    /* ── FIXED: Export CSV button ── */
     .btn-outline {
       display:flex;align-items:center;gap:6px;padding:7px 16px;
       background:var(--lav-l);border:1.5px solid var(--lav-m);
@@ -67,6 +68,55 @@
     .sync-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);}
     .sync-dot.stale{background:var(--amber);}
     .sync-dot.never{background:var(--rose);}
+
+    /* ── Test Agent card styles ── */
+    .test-agent-btn {
+      display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+      background:var(--lav);border:none;border-radius:50px;
+      font-family:'Nunito',sans-serif;font-size:.78rem;font-weight:800;
+      color:#fff;cursor:pointer;transition:all .15s;margin-top:6px;
+    }
+    .test-agent-btn:hover{background:#7c5fe6;transform:translateY(-1px);}
+    .test-agent-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+
+    .test-status-badge {
+      display:inline-flex;align-items:center;gap:6px;
+      padding:4px 12px;border-radius:50px;
+      font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
+      border:1.5px solid;margin-top:6px;
+    }
+    .test-status-pending  {color:var(--amber);background:var(--amber-l);border-color:var(--amber-m);}
+    .test-status-success  {color:var(--mint);background:var(--mint-l);border-color:var(--mint-m);}
+    .test-status-failure  {color:var(--rose);background:var(--rose-l);border-color:var(--rose-m);}
+    .test-status-idle     {color:var(--ink3);background:var(--bg);border-color:var(--border2);}
+
+    .sub-status-badge {
+      display:inline-flex;align-items:center;gap:5px;
+      padding:4px 12px;border-radius:50px;
+      font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
+      border:1.5px solid;margin-top:6px;
+    }
+    .sub-active   {color:var(--mint);background:var(--mint-l);border-color:var(--mint-m);}
+    .sub-inactive {color:var(--rose);background:var(--rose-l);border-color:var(--rose-m);}
+    .sub-trial    {color:var(--sky);background:var(--sky-l);border-color:var(--sky-m);}
+
+    /* ── Chart filter bar ── */
+    .chart-filter-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+    .cft-btn{
+      padding:5px 13px;border-radius:50px;border:1.5px solid var(--border2);
+      background:var(--bg);color:var(--ink2);font-family:'Nunito',sans-serif;
+      font-size:.72rem;font-weight:700;cursor:pointer;transition:all .15s;
+    }
+    .cft-btn:hover{border-color:var(--lav-m);color:var(--lav);background:var(--lav-l);}
+    .cft-btn.active{background:var(--lav);color:#fff;border-color:var(--lav);}
+    .cft-custom-wrap{display:none;align-items:center;gap:6px;}
+    .cft-custom-wrap.vis{display:flex;}
+    .cft-date-input{
+      padding:5px 9px;border-radius:8px;border:1.5px solid var(--border2);
+      background:var(--bg);color:var(--ink);font-family:'Nunito',sans-serif;
+      font-size:.72rem;font-weight:600;outline:none;
+    }
+    .cft-date-input:focus{border-color:var(--lav);}
 
     /* ── Export Modal ── */
     .modal-backdrop {
@@ -107,7 +157,6 @@
     .modal-close:hover { background: var(--border, #ede9e4); }
     .modal-body { padding: 16px 20px 20px; }
 
-    /* ── Export range buttons ── */
     .export-range-btn {
       flex: 1;
       padding: 7px 10px;
@@ -124,7 +173,6 @@
     .export-range-btn:hover  { border-color: var(--lav); color: var(--lav); }
     .export-range-btn.active { background: var(--lav); border-color: var(--lav); color: #fff; }
 
-    /* ── Export download button ── */
     #exportModal .btn-primary {
       display: flex; align-items: center; gap: 7px;
       padding: 10px 18px;
@@ -135,7 +183,6 @@
     }
     #exportModal .btn-primary:hover { background: #7c5fe6; }
 
-    /* ── Export form inputs ── */
     #exportModal .form-input {
       padding: 7px 10px; border-radius: 8px;
       border: 1.5px solid var(--border, #ede9e4);
@@ -151,10 +198,6 @@
       color: var(--ink3, #6b6560);
       min-height: 18px;
     }
-    .export-desc {
-      font-family: 'Nunito', sans-serif;
-      font-size: .8rem; color: var(--ink3, #6b6560); margin: 0;
-    }
     .export-custom-dates {
       display: none; gap: 10px; flex-wrap: wrap;
     }
@@ -165,7 +208,6 @@
       font-family: 'Nunito', sans-serif; font-weight: 700;
     }
 
-    /* ── Export field checklist ── */
     .export-fields {
       display: flex; flex-direction: column; gap: 6px;
     }
@@ -204,7 +246,7 @@
         <polyline points="7 10 12 15 17 10"/>
         <line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
-      Export CSV
+      Export XLSX
     </button>
     <button class="resync-btn" id="resyncBtn" onclick="triggerFullResync()" title="Wipe cache and re-fetch all conversations">♻️ Re-sync All</button>
     <button class="sync-btn"   id="syncBtn"   onclick="triggerSync()">🔄 Sync Now</button>
@@ -219,35 +261,43 @@
 <!-- ══ OVERVIEW ══ -->
 <div id="overviewScreen" class="screen active">
   <div class="stats-row" id="statsRow">
+    <!-- Card 1: Number of Calls -->
     <div class="stat-card" style="animation-delay:0ms">
       <div class="sc-label">Number of Calls</div>
       <div class="sc-val" id="sv1">—</div>
       <div class="sc-sub">total sessions</div>
     </div>
+    <!-- Card 2: Average Duration -->
     <div class="stat-card" style="animation-delay:50ms">
       <div class="sc-label">Average Duration</div>
       <div class="sc-val" id="sv2">—</div>
       <div class="sc-sub">per session</div>
     </div>
+    <!-- Card 3: Unique Users -->
     <div class="stat-card" style="animation-delay:100ms">
-      <div class="sc-label">Total Tokens Used</div>
-      <div class="sc-val" id="sv3">—</div>
-      <div class="sc-sub" id="sv3sub">input + output</div>
+      <div class="sc-label">Unique Users</div>
+      <div class="sc-val" id="svUsers">—</div>
+      <div class="sc-sub">distinct users</div>
     </div>
+    <!-- Card 4: Test Agent -->
     <div class="stat-card" style="animation-delay:150ms">
-      <div class="sc-label">Avg Tokens / Session</div>
-      <div class="sc-val" id="sv4">—</div>
-      <div class="sc-sub">per conversation</div>
+      <div class="sc-label">Agent Test</div>
+      <div class="sc-val" style="font-size:1.1rem;margin-bottom:6px;">Run a test</div>
+      <button class="test-agent-btn" id="testAgentBtn" onclick="runAgentTest()">🧪 Test Agent</button>
     </div>
+    <!-- Card 5: Test Status -->
     <div class="stat-card" style="animation-delay:200ms">
-      <div class="sc-label">Total LLM Cost</div>
-      <div class="sc-val" id="sv5">—</div>
-      <div class="sc-sub" id="sv5sub">ElevenLabs credits</div>
+      <div class="sc-label">Test Status</div>
+      <div id="testStatusWrap">
+        <div class="sc-val" style="font-size:1.1rem;margin-bottom:4px;" id="testStatusVal">—</div>
+        <div id="testStatusBadge" class="test-status-badge test-status-idle">Idle</div>
+      </div>
     </div>
+    <!-- Card 6: Subscription Status -->
     <div class="stat-card" style="animation-delay:250ms">
-      <div class="sc-label">Avg LLM Cost</div>
-      <div class="sc-val" id="sv6">—</div>
-      <div class="sc-sub" id="sv6sub">per session</div>
+      <div class="sc-label">Subscription</div>
+      <div class="sc-val" style="font-size:1.1rem;margin-bottom:4px;" id="subStatusVal">—</div>
+      <div id="subStatusBadge" class="sub-status-badge sub-active">Active</div>
     </div>
   </div>
 
@@ -255,11 +305,26 @@
     <div class="card-head">
       <div>
         <div class="card-title">Calls over time</div>
-        <div class="card-sub">Number of conversations per day</div>
+        <div class="card-sub">Sessions &amp; avg duration per day</div>
       </div>
-      <div class="legend">
-        <div class="leg-item"><div class="leg-dot" style="background:var(--lav)"></div>Sessions</div>
-        <div class="leg-item" id="llmLegend" style="display:none"><div class="leg-dot" style="background:var(--peach)"></div>LLM Credits</div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+        <div class="legend">
+          <div class="leg-item"><div class="leg-dot" style="background:var(--lav)"></div>Sessions</div>
+          <div class="leg-item"><div class="leg-dot" style="background:var(--peach)"></div>Avg Duration (s)</div>
+        </div>
+        <!-- Chart date filter -->
+        <div class="chart-filter-bar" id="chartFilterBar">
+          <button class="cft-btn" data-range="7"   onclick="setChartFilter(7,this)">7d</button>
+          <button class="cft-btn active" data-range="30" onclick="setChartFilter(30,this)">30d</button>
+          <button class="cft-btn" data-range="90"  onclick="setChartFilter(90,this)">90d</button>
+          <button class="cft-btn" data-range="all" onclick="setChartFilter('all',this)">All</button>
+          <button class="cft-btn" data-range="custom" onclick="setChartFilter('custom',this)">Custom</button>
+          <div class="cft-custom-wrap" id="cftCustomWrap">
+            <input type="date" id="cftFrom" class="cft-date-input" onchange="applyCustomChartFilter()"/>
+            <span style="font-size:.7rem;color:var(--ink3);font-weight:700;">→</span>
+            <input type="date" id="cftTo" class="cft-date-input" onchange="applyCustomChartFilter()"/>
+          </div>
+        </div>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
@@ -310,7 +375,7 @@
   </aside>
 </div>
 
-<!-- ── Export CSV Modal ── -->
+<!-- ── Export XLSX Modal ── -->
 <div id="exportModal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeExportModal()">
   <div class="modal-box">
     <div class="modal-header">
@@ -366,13 +431,13 @@
 
       <div id="exportRowCount"></div>
 
-      <button class="btn-primary" onclick="downloadExportCsv()">
+      <button class="btn-primary" onclick="downloadExportXlsx()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        Download CSV
+        Download XLSX
       </button>
     </div>
   </div>
@@ -404,6 +469,10 @@ avEl.textContent = agentEmoji; avEl.dataset.color = agentColor;
 let allConvs = [], userMap = {}, userLatestConv = {};
 let activeUser = null, activeConv = null, activeDayFilter = null;
 let chartInst = null, currentUserRole = null;
+let _chartRange = 30; // default 30 days
+let _testStatus = 'idle'; // idle | pending | success | failure
+let XI_API_KEY  = '';        // loaded from agents table on init
+let XI_AGENT_ID = agentIdVal; // overwritten from DB on init
 
 async function backendFetch(path, options = {}) {
   const { data: { session } } = await sb.auth.getSession();
@@ -473,16 +542,6 @@ function rowToCost(row) {
   return null;
 }
 
-function rowToLLMDollars(row) {
-  if (row.llm_price != null && Number(row.llm_price) > 0) return Number(row.llm_price);
-  try {
-    const meta = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
-    const charging = meta?.charging || {};
-    if (charging?.llm_price != null && Number(charging.llm_price) > 0) return Number(charging.llm_price);
-  } catch {}
-  return null;
-}
-
 function rowToTranscript(row) {
   if (!row?.transcript) return [];
   return Array.isArray(row.transcript) ? row.transcript : [];
@@ -515,10 +574,148 @@ function extractUserName(row) {
   return null;
 }
 
-const fmtCost = c => { if (c === null || c === undefined) return null; if (c === 0) return '0 cr'; return `${Math.round(c)} cr`; };
-const fmtDollars = c => { if (c === null || c === undefined) return null; if (c === 0) return '$0.00'; if (c < 0.00001) return `${c.toFixed(6)}`; if (c < 0.001) return `${c.toFixed(5)}`; if (c < 0.01) return `${c.toFixed(4)}`; return `${c.toFixed(2)}`; };
-const fmtTokens = n => { if (!n && n !== 0) return '—'; if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M'; if (n >= 1_000) return (n/1_000).toFixed(1)+'K'; return String(n); };
+const fmtCost    = c => { if (c === null || c === undefined) return null; if (c === 0) return '0 cr'; return `${Math.round(c)} cr`; };
+const fmtTokens  = n => { if (!n && n !== 0) return '—'; if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M'; if (n >= 1_000) return (n/1_000).toFixed(1)+'K'; return String(n); };
 
+// ── ElevenLabs config ─────────────────────────────────────────
+const XI_TEST_IDS = [
+  'test_3501khk9es7se6sa5v80dqfymy5p',
+  'test_1601khnxeyt8e6nrs7e9nwh1af0b',
+  'test_8001khttb2hjfy9t68fcgt8d7pg9',
+  'test_4901khnhzkgqffa94mvtb5kkkq0n',
+  'test_1901khbh1446fybaxgd4sa6j4e7q',
+];
+
+async function xiFetch(path, options = {}) {
+  const res = await fetch(`https://api.elevenlabs.io${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(XI_API_KEY ? { 'xi-api-key': XI_API_KEY } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`ElevenLabs API error ${res.status}`);
+  return res.json();
+}
+
+// ── Test Agent ─────────────────────────────────────────────────
+function setTestStatus(status, detail) {
+  _testStatus = status;
+  const badge = document.getElementById('testStatusBadge');
+  const val   = document.getElementById('testStatusVal');
+  const map = {
+    idle:    { label:'Idle',    cls:'test-status-idle',    icon:'—' },
+    pending: { label:'Pending', cls:'test-status-pending', icon:'⏳' },
+    success: { label:'Success', cls:'test-status-success', icon:'✅' },
+    failure: { label:'Failure', cls:'test-status-failure', icon:'❌' },
+  };
+  const s = map[status] || map.idle;
+  badge.className = `test-status-badge ${s.cls}`;
+  badge.textContent = detail ? `${s.label} (${detail})` : s.label;
+  val.textContent = s.icon;
+}
+
+async function pollInvocation(invocationId, maxWaitMs = 90000) {
+  const interval = 3000;
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, interval));
+    const data = await xiFetch(`/v1/convai/test-invocations/${invocationId}`);
+    const st = (data.status || '').toLowerCase();
+    if (st === 'completed' || st === 'done' || st === 'success') return 'success';
+    if (st === 'failed' || st === 'failure' || st === 'error')   return 'failure';
+    // still running — keep polling
+  }
+  return 'failure'; // timed out
+}
+
+async function runAgentTest() {
+  if (!XI_API_KEY) {
+    alert('ElevenLabs API key not found for this agent.\nMake sure the api_key column is set in your agents table.');
+    return;
+  }
+  if (!XI_AGENT_ID) {
+    alert('No ElevenLabs Agent ID found for this agent.\nMake sure the agent_id column is set in your agents table.');
+    return;
+  }
+  const btn = document.getElementById('testAgentBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  setTestStatus('pending');
+
+  try {
+    // Step 1 — trigger all 5 tests
+    const triggerRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/run-tests`, {
+      method: 'POST',
+      body: JSON.stringify({ test_ids: XI_TEST_IDS }),
+    });
+
+    // Collect invocation IDs (API returns array of objects with invocation_id or trun_ IDs)
+    const invocations = Array.isArray(triggerRes)
+      ? triggerRes
+      : (triggerRes.invocations || triggerRes.test_invocations || []);
+
+    if (!invocations.length) throw new Error('No invocation IDs returned');
+
+    const invocationIds = invocations.map(i => i.invocation_id || i.id || i).filter(Boolean);
+
+    // Step 2 — poll all invocations in parallel
+    const results = await Promise.all(invocationIds.map(id => pollInvocation(id)));
+
+    const passed = results.filter(r => r === 'success').length;
+    const total  = results.length;
+
+    // Rule: if ≥2 pass → success, otherwise failure
+    if (passed >= 2) {
+      setTestStatus('success', `${passed}/${total} passed`);
+    } else {
+      setTestStatus('failure', `${passed}/${total} passed`);
+    }
+  } catch (err) {
+    setTestStatus('failure');
+    console.error('Agent test error:', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🧪 Test Agent';
+  }
+}
+
+// ── Subscription Status ────────────────────────────────────────
+async function loadSubscriptionStatus() {
+  const subBadge = document.getElementById('subStatusBadge');
+  const subVal   = document.getElementById('subStatusVal');
+  if (!XI_API_KEY) {
+    subVal.textContent = '—';
+    subBadge.className = 'sub-status-badge sub-inactive';
+    subBadge.textContent = 'No API Key';
+    return;
+  }
+  try {
+    const data = await xiFetch('/v1/user/subscription');
+    const tier   = data.tier || data.plan || '';
+    const status = (data.status || '').toLowerCase();
+    const label  = tier ? tier.replace(/_/g,' ') : (status || 'Unknown');
+
+    subVal.textContent = label.length > 12 ? label.slice(0, 12) + '…' : label;
+
+    if (status === 'active' || status === 'trialing' || tier) {
+      const isTrial = status === 'trialing' || tier.toLowerCase().includes('free');
+      subBadge.className = `sub-status-badge ${isTrial ? 'sub-trial' : 'sub-active'}`;
+      subBadge.textContent = isTrial ? 'Trial' : 'Active';
+    } else {
+      subBadge.className = 'sub-status-badge sub-inactive';
+      subBadge.textContent = 'Inactive';
+    }
+  } catch (err) {
+    subVal.textContent = '—';
+    subBadge.className = 'sub-status-badge sub-inactive';
+    subBadge.textContent = 'Error';
+    console.error('Subscription fetch error:', err);
+  }
+}
+
+// ── Sync ───────────────────────────────────────────────────────
 async function triggerSync() {
   if (!agentDbId) return;
   const btn = document.getElementById('syncBtn');
@@ -576,6 +773,27 @@ async function init() {
     currentUserRole = profile?.role;
     if (currentUserRole === 'admin') document.getElementById('syncWrap').style.display = 'flex';
   }
+
+  // ── Load agent credentials from Supabase agents table ─────────
+  try {
+    const { data: agentRow, error } = await sb
+      .from('agents')
+      .select('api_key, agent_id')
+      .eq('id', agentDbId)
+      .single();
+    if (!error && agentRow) {
+      if (agentRow.api_key)  XI_API_KEY  = agentRow.api_key;
+      if (agentRow.agent_id) XI_AGENT_ID = agentRow.agent_id;
+    }
+  } catch (e) { console.warn('Could not load agent credentials from DB:', e); }
+
+  // Init default chart filter dates
+  const now = new Date();
+  const from30 = new Date(now); from30.setDate(now.getDate() - 30);
+  document.getElementById('cftFrom').value = from30.toISOString().slice(0,10);
+  document.getElementById('cftTo').value   = now.toISOString().slice(0,10);
+
+  loadSubscriptionStatus(); // fire-and-forget, non-blocking
   await loadConversations();
 }
 
@@ -624,56 +842,63 @@ function renderOverview() {
   const n = allConvs.length;
   const durs = allConvs.map(r => r.duration_secs).filter(Boolean);
   const avgD = durs.length ? Math.round(durs.reduce((a,b)=>a+b,0) / durs.length) : 0;
-  const tokensList = allConvs.map(rowToTokens).filter(Boolean);
-  const totInput = tokensList.reduce((a,t) => a + t.input, 0);
-  const totOutput = tokensList.reduce((a,t) => a + t.output, 0);
-  const totTokens = totInput + totOutput;
-  const avgTokens = tokensList.length ? Math.round(totTokens / tokensList.length) : 0;
-  const hasTokens = tokensList.length > 0;
-  const sessionCosts = allConvs.map(rowToCost).filter(Boolean);
-  const totLLM = sessionCosts.reduce((a, s) => a + s.cost, 0);
-  const avgLLM = sessionCosts.length ? totLLM / sessionCosts.length : null;
-  const hasLLM = sessionCosts.length > 0;
-  const dollarCosts = allConvs.map(rowToLLMDollars).filter(v => v !== null);
-  const totDollars = dollarCosts.reduce((a, v) => a + v, 0);
-  const avgDollars = dollarCosts.length ? totDollars / dollarCosts.length : null;
-  const hasDollars = dollarCosts.length > 0;
+  const uniqueUsers = Object.keys(userMap).length;
 
-  document.getElementById('sv1').textContent = n || '0';
-  document.getElementById('sv2').textContent = fmtDur(avgD);
-  if (hasTokens) {
-    document.getElementById('sv3').textContent    = fmtTokens(totTokens);
-    document.getElementById('sv3sub').textContent = `${fmtTokens(totInput)} in · ${fmtTokens(totOutput)} out`;
-    document.getElementById('sv4').textContent    = fmtTokens(avgTokens);
-  } else {
-    document.getElementById('sv3').textContent    = '—';
-    document.getElementById('sv3sub').textContent = 'sync again to get token data';
-    document.getElementById('sv4').textContent    = '—';
-  }
-  document.getElementById('sv5').textContent    = hasDollars ? (fmtDollars(totDollars) || '—') : (hasLLM ? fmtCost(totLLM) : '—');
-  document.getElementById('sv5sub').textContent = hasDollars ? `${Math.round(totLLM)} cr total` : (hasLLM ? 'ElevenLabs credits' : 'sync again to get cost data');
-  document.getElementById('sv6').textContent    = hasDollars ? (fmtDollars(avgDollars) || '—') : (avgLLM !== null ? fmtCost(avgLLM) : '—');
-  const sv6sub = document.getElementById('sv6sub');
-  if (sv6sub) sv6sub.textContent = hasDollars ? `${Math.round(avgLLM || 0)} cr avg` : 'per session';
-  document.getElementById('llmLegend').style.display = hasLLM ? 'flex' : 'none';
-  renderChart(hasLLM);
+  document.getElementById('sv1').textContent      = n || '0';
+  document.getElementById('sv2').textContent      = fmtDur(avgD);
+  document.getElementById('svUsers').textContent  = uniqueUsers || '0';
+
+  renderChart();
 }
 
-function renderChart(hasLLM) {
+// ── Chart filter ───────────────────────────────────────────────
+function setChartFilter(range, btn) {
+  _chartRange = range;
+  document.querySelectorAll('.cft-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const customWrap = document.getElementById('cftCustomWrap');
+  customWrap.classList.toggle('vis', range === 'custom');
+  if (range !== 'custom') renderChart();
+}
+
+function applyCustomChartFilter() {
+  if (_chartRange === 'custom') renderChart();
+}
+
+function getChartFilteredConvs() {
+  if (_chartRange === 'all') return allConvs;
+  const now = Math.floor(Date.now() / 1000);
+  if (typeof _chartRange === 'number') {
+    const cutoff = now - (_chartRange * 86400);
+    return allConvs.filter(r => (r.start_time_unix || 0) >= cutoff);
+  }
+  if (_chartRange === 'custom') {
+    const fv = document.getElementById('cftFrom').value;
+    const tv = document.getElementById('cftTo').value;
+    if (!fv || !tv) return allConvs;
+    const fromUnix = Math.floor(new Date(fv).getTime() / 1000);
+    const toUnix   = Math.floor(new Date(tv + 'T23:59:59').getTime() / 1000);
+    return allConvs.filter(r => { const t = r.start_time_unix; return t >= fromUnix && t <= toUnix; });
+  }
+  return allConvs;
+}
+
+function renderChart() {
+  const filteredConvs = getChartFilteredConvs();
   const buckets = {};
-  for (const row of allConvs) {
+  for (const row of filteredConvs) {
     const u  = row.start_time_unix;
     const sk = u ? new Date(u*1000).toISOString().slice(0,10) : '0000';
     const lb = u ? new Date(u*1000).toLocaleDateString('en-IN',{day:'numeric',month:'short'}) : '?';
-    if (!buckets[sk]) buckets[sk] = { lbl: lb, n: 0, llm: 0 };
+    if (!buckets[sk]) buckets[sk] = { lbl: lb, n: 0, durSum: 0, durCount: 0 };
     buckets[sk].n++;
-    const sess = rowToCost(row);
-    if (sess) buckets[sk].llm += sess.cost;
+    if (row.duration_secs) { buckets[sk].durSum += row.duration_secs; buckets[sk].durCount++; }
   }
-  const keys = Object.keys(buckets).sort();
+  const keys   = Object.keys(buckets).sort();
   const labels = keys.map(k => buckets[k].lbl);
   const counts = keys.map(k => buckets[k].n);
-  const llmVs  = keys.map(k => parseFloat(buckets[k].llm.toFixed(5)));
+  const avgDurs = keys.map(k => buckets[k].durCount ? Math.round(buckets[k].durSum / buckets[k].durCount) : 0);
+
   if (chartInst) { chartInst.destroy(); chartInst = null; }
   const ctx = document.getElementById('mainChart').getContext('2d');
   chartInst = new Chart(ctx, {
@@ -681,8 +906,18 @@ function renderChart(hasLLM) {
     data: {
       labels,
       datasets: [
-        { label:'Sessions', data:counts, borderColor:'#9b7ff4', backgroundColor:'rgba(155,127,244,0.08)', borderWidth:2.5, pointBackgroundColor:'#9b7ff4', pointRadius:4, pointHoverRadius:6, tension:0.35, fill:true, yAxisID:'y' },
-        ...(hasLLM ? [{ label:'LLM Credits', data:llmVs, borderColor:'#ff8c6b', backgroundColor:'rgba(255,140,107,0.07)', borderWidth:2, pointBackgroundColor:'#ff8c6b', pointRadius:4, pointHoverRadius:6, tension:0.35, fill:true, borderDash:[5,4], yAxisID:'y2' }] : []),
+        {
+          label:'Sessions', data:counts,
+          borderColor:'#9b7ff4', backgroundColor:'rgba(155,127,244,0.08)',
+          borderWidth:2.5, pointBackgroundColor:'#9b7ff4', pointRadius:4, pointHoverRadius:6,
+          tension:0.35, fill:true, yAxisID:'y'
+        },
+        {
+          label:'Avg Duration (s)', data:avgDurs,
+          borderColor:'#ff8c6b', backgroundColor:'rgba(255,140,107,0.07)',
+          borderWidth:2, pointBackgroundColor:'#ff8c6b', pointRadius:4, pointHoverRadius:6,
+          tension:0.35, fill:true, borderDash:[5,4], yAxisID:'y2'
+        },
       ],
     },
     options: {
@@ -690,12 +925,17 @@ function renderChart(hasLLM) {
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},
-        tooltip:{ backgroundColor:'#fff', borderColor:'#ede9e4', borderWidth:1.5, titleColor:'#2d2926', bodyColor:'#6b6560', padding:12, cornerRadius:10, titleFont:{family:'Nunito',weight:'800',size:12}, bodyFont:{family:'Nunito',weight:'600',size:11}, callbacks:{label:ctx=>ctx.dataset.label==='LLM Credits'?`  LLM Credits: ${Math.round(ctx.parsed.y)}`:`  Sessions: ${ctx.parsed.y}`} },
+        tooltip:{
+          backgroundColor:'#fff', borderColor:'#ede9e4', borderWidth:1.5,
+          titleColor:'#2d2926', bodyColor:'#6b6560', padding:12, cornerRadius:10,
+          titleFont:{family:'Nunito',weight:'800',size:12}, bodyFont:{family:'Nunito',weight:'600',size:11},
+          callbacks:{label:ctx=>ctx.dataset.label==='Avg Duration (s)'?`  Avg Duration: ${ctx.parsed.y}s`:`  Sessions: ${ctx.parsed.y}`}
+        },
       },
       scales:{
         x:{grid:{color:'rgba(0,0,0,0.04)'},ticks:{font:{family:'Nunito',weight:'700',size:10},color:'#aba49c'}},
         y:{position:'left',grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{family:'Nunito',weight:'700',size:10},color:'#9b7ff4',stepSize:1},beginAtZero:true},
-        ...(hasLLM?{y2:{position:'right',grid:{drawOnChartArea:false},ticks:{font:{family:'Nunito',weight:'700',size:10},color:'#ff8c6b',callback:v=>'$'+v.toFixed(4)},beginAtZero:true}}:{}),
+        y2:{position:'right',grid:{drawOnChartArea:false},ticks:{font:{family:'Nunito',weight:'700',size:10},color:'#ff8c6b',callback:v=>v+'s'},beginAtZero:true},
       },
     },
   });
@@ -775,14 +1015,13 @@ function renderTimeline(rows) {
     grp.className='day-grp slide-up'; grp.style.animationDelay=(di*40)+'ms';
     grp.innerHTML=`<div class="day-strip"><div class="day-pill">${esc(l)}</div><div class="day-line"></div><div class="day-n">${dc.length}</div></div>`;
     dc.forEach((r, ci) => {
-      const u = r.start_time_unix, tok = rowToTokens(r), sess = rowToCost(r);
-      const ls = sess ? fmtCost(sess.cost) : null;
+      const u = r.start_time_unix, tok = rowToTokens(r);
       const tr = rowToTranscript(r), prev = tr.find(t=>t.role==='user')?.message || 'No preview';
       const card = document.createElement('div');
       card.className='sess-card slide-up'+(r.conversation_id===activeConv?' active':'');
       card.style.animationDelay=(di*40+ci*18)+'ms';
       const userTurns = tr.filter(t=>t.role==='user').length;
-      card.innerHTML=`<div class="sc-top"><div class="sc-time">${fmtTime(u)}</div><div class="sc-stat ${stClass(r.status)}">${r.status||'—'}</div></div><div class="sc-prev">${esc(prev)}</div><div class="sc-chips">${r.duration_secs?`<span class="sc-chip">⏱ ${fmtDur(r.duration_secs)}</span>`:''}${userTurns?`<span class="sc-chip">💬 ${userTurns} quer${userTurns!==1?'ies':'y'}</span>`:''}${tok?`<span class="sc-chip">🔢 ${fmtTokens(tok.total)}</span>`:''}${ls?`<span class="sc-chip llm">💰 ${ls}</span>`:''}</div>`;
+      card.innerHTML=`<div class="sc-top"><div class="sc-time">${fmtTime(u)}</div><div class="sc-stat ${stClass(r.status)}">${r.status||'—'}</div></div><div class="sc-prev">${esc(prev)}</div><div class="sc-chips">${r.duration_secs?`<span class="sc-chip">⏱ ${fmtDur(r.duration_secs)}</span>`:''}${userTurns?`<span class="sc-chip">💬 ${userTurns} quer${userTurns!==1?'ies':'y'}</span>`:''}${tok?`<span class="sc-chip">🔢 ${fmtTokens(tok.total)}</span>`:''}</div>`;
       card.onclick = () => openTranscript(r, activeUser, card);
       grp.appendChild(card);
     });
@@ -801,17 +1040,15 @@ function renderTranscript(row, userName) {
   const tr = rowToTranscript(row);
   const dName = userName || extractUserName(row) || 'User';
   const ini = initials(dName);
-  const tok = rowToTokens(row), cost = rowToCost(row), dollars = rowToLLMDollars(row);
+  const tok = rowToTokens(row);
 
+  // Right panel — cost/llm fields removed
   const ipRows = [
     { label:'Conversation ID',    value: row.conversation_id, mono:true, small:true },
     { label:'Status',             value: `<span class="sc-stat ${stClass(row.status)}" style="font-size:.65rem">${row.status||'—'}</span>`, html:true },
     { label:'Date',               value: row.start_time_unix ? fmtDate(row.start_time_unix) : '—' },
     { label:'Time',               value: row.start_time_unix ? fmtTime(row.start_time_unix) : '—' },
     { label:'Duration',           value: fmtDur(row.duration_secs) },
-    { label:'Call Cost',          value: row.cost     != null ? Math.round(Number(row.cost))     + ' credits' : '—' },
-    { label:'LLM Credits',        value: row.llm_cost != null ? Math.round(Number(row.llm_cost)) + ' credits' : '—' },
-    { label:'LLM Cost',           value: dollars      != null ? '$' + Number(dollars).toFixed(5) : '—' },
     { label:'Primary Question',   value: row.primary_question || '—' },
     { label:'KB Questions',       value: row.kb_question_list ? (Array.isArray(row.kb_question_list) ? row.kb_question_list.join(', ') : JSON.stringify(row.kb_question_list)) : '—', small:true },
     { label:'Non-KB Questions',   value: row.non_kb_question_list ? (Array.isArray(row.non_kb_question_list) ? row.non_kb_question_list.join(', ') : JSON.stringify(row.non_kb_question_list)) : '—', small:true },
@@ -836,7 +1073,7 @@ function renderTranscript(row, userName) {
           <div class="tr-id">${esc(row.conversation_id)}</div>
         </div>
       </div>
-      ${tok ? `<div class="tr-chips"><div class="tr-chip llm">🔢 ${fmtTokens(tok.input)} in · ${fmtTokens(tok.output)} out</div>${cost ? `<div class="tr-chip llm">💰 ${fmtCost(cost.cost)}</div>` : ''}</div>` : ''}
+      ${tok ? `<div class="tr-chips"><div class="tr-chip llm">🔢 ${fmtTokens(tok.input)} in · ${fmtTokens(tok.output)} out</div></div>` : ''}
     </div>
     <div class="msgs" id="msgsBox"></div>`;
 
@@ -863,7 +1100,7 @@ document.addEventListener('keydown', e => {
   if ((e.metaKey||e.ctrlKey)&&e.key==='k') { e.preventDefault(); document.getElementById('userSearch').focus(); }
 });
 
-// ── EXPORT CSV ────────────────────────────────────────────────
+// ── EXPORT XLSX ───────────────────────────────────────────────
 let _exportRange = 'week';
 
 function openExportModal() {
@@ -924,12 +1161,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function _escapeCsv(val) {
-  if (val == null) return '';
-  const s = String(val);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
-}
-
 function _fmtList(val) {
   if (!val) return '';
   if (Array.isArray(val)) return val.join('; ');
@@ -937,11 +1168,10 @@ function _fmtList(val) {
   try { return JSON.parse(val).join('; '); } catch { return String(val); }
 }
 
-function downloadExportCsv() {
+function downloadExportXlsx() {
   const rows = _getFilteredRows();
   if (!rows.length) { alert('No conversations found for the selected range.'); return; }
 
-  // Read which fields are checked
   const inclName    = document.getElementById('ef-name').checked;
   const inclDate    = document.getElementById('ef-date').checked;
   const inclSummary = document.getElementById('ef-summary').checked;
@@ -958,9 +1188,7 @@ function downloadExportCsv() {
 
   if (!header.length) { alert('Please select at least one field to export.'); return; }
 
-  const lines = [header.join(',')];
-
-  rows.forEach(r => {
+  const dataRows = rows.map(r => {
     const name    = extractUserName(r) || r.user_name || '';
     const date    = r.start_time_unix
       ? new Date(r.start_time_unix * 1000).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
@@ -968,27 +1196,29 @@ function downloadExportCsv() {
     const summary = r.transcript_summary || '';
     const kb      = _fmtList(r.kb_question_list);
     const nonKb   = _fmtList(r.non_kb_question_list);
-
-    const cols = [
-      ...(inclName    ? [_escapeCsv(name)]    : []),
-      ...(inclDate    ? [_escapeCsv(date)]    : []),
-      ...(inclSummary ? [_escapeCsv(summary)] : []),
-      ...(inclKb      ? [_escapeCsv(kb)]      : []),
-      ...(inclNonKb   ? [_escapeCsv(nonKb)]   : []),
-    ];
-    lines.push(cols.join(','));
+    const row = {};
+    if (inclName)    row['User Name']          = name;
+    if (inclDate)    row['Date']               = date;
+    if (inclSummary) row['Transcript Summary'] = summary;
+    if (inclKb)      row['KB Questions']       = kb;
+    if (inclNonKb)   row['Non-KB Questions']   = nonKb;
+    return row;
   });
 
-  const csv  = '\uFEFF' + lines.join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+  const ws = XLSX.utils.json_to_sheet(dataRows, { header });
+
+  // Style header row width
+  const colWidths = header.map(h => ({ wch: Math.max(h.length + 4, 18) }));
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Chat History');
+
   const bounds   = _getExportBounds();
   const fromDate = bounds ? new Date(bounds.fromUnix*1000).toISOString().slice(0,10) : 'export';
   const toDate   = bounds ? new Date(bounds.toUnix*1000).toISOString().slice(0,10)   : '';
-  a.href = url; a.download = `chat-history_${fromDate}_to_${toDate}.csv`;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
+  XLSX.writeFile(wb, `chat-history_${fromDate}_to_${toDate}.xlsx`);
+
   closeExportModal();
 }
 
