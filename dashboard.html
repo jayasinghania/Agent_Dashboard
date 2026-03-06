@@ -616,18 +616,19 @@ function setTestStatus(status, detail) {
   val.textContent = s.icon;
 }
 
-async function pollInvocation(invocationId, maxWaitMs = 90000) {
-  const interval = 3000;
+async function pollInvocation(invocationId, maxWaitMs = 120000) {
+  const interval = 4000;
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, interval));
     const data = await xiFetch(`/v1/convai/test-invocations/${invocationId}`);
+    // ElevenLabs statuses: pending | processing | completed | failed
     const st = (data.status || '').toLowerCase();
-    if (st === 'completed' || st === 'done' || st === 'success') return 'success';
-    if (st === 'failed' || st === 'failure' || st === 'error')   return 'failure';
-    // still running — keep polling
+    if (st === 'completed') return data.passed === true ? 'success' : 'failure';
+    if (st === 'failed' || st === 'error') return 'failure';
+    // pending / processing — keep polling
   }
-  return 'failure'; // timed out
+  return 'failure'; // timed out after 2 min
 }
 
 async function runAgentTest() {
@@ -646,19 +647,18 @@ async function runAgentTest() {
 
   try {
     // Step 1 — trigger all 5 tests
+    // API expects: { "tests": [ { "test_id": "..." }, ... ] }
     const triggerRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/run-tests`, {
       method: 'POST',
-      body: JSON.stringify({ test_ids: XI_TEST_IDS }),
+      body: JSON.stringify({ tests: XI_TEST_IDS.map(id => ({ test_id: id })) }),
     });
 
-    // Collect invocation IDs (API returns array of objects with invocation_id or trun_ IDs)
-    const invocations = Array.isArray(triggerRes)
-      ? triggerRes
-      : (triggerRes.invocations || triggerRes.test_invocations || []);
+    // Response shape: { test_runs: [ { test_invocation_id: "...", status: "pending", ... } ] }
+    const testRuns = triggerRes.test_runs || [];
 
-    if (!invocations.length) throw new Error('No invocation IDs returned');
+    if (!testRuns.length) throw new Error('No test runs returned');
 
-    const invocationIds = invocations.map(i => i.invocation_id || i.id || i).filter(Boolean);
+    const invocationIds = testRuns.map(r => r.test_invocation_id).filter(Boolean);
 
     // Step 2 — poll all invocations in parallel
     const results = await Promise.all(invocationIds.map(id => pollInvocation(id)));
