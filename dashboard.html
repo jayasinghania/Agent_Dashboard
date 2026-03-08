@@ -246,7 +246,7 @@
         <polyline points="7 10 12 15 17 10"/>
         <line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
-      Download Report
+      Export XLSX
     </button>
     <button class="resync-btn" id="resyncBtn" onclick="triggerFullResync()" title="Wipe cache and re-fetch all conversations">♻️ Re-sync All</button>
     <button class="sync-btn"   id="syncBtn"   onclick="triggerSync()">🔄 Sync Now</button>
@@ -633,8 +633,10 @@ function setTestStatus(status, detail) {
 
 async function pollInvocation(invocationId, maxWaitMs = 180000) {
   // GET /v1/convai/test-invocations/:test_invocation_id
-  // Expected terminal statuses: completed | failed | error
-  // Running statuses: pending | processing | running
+  // The suite response has NO top-level status.
+  // Individual test_runs have status: "pending" | "passed" | "failed"
+  // We wait until ALL test_runs are in a terminal state (not "pending" / "processing" / "running")
+  const TERMINAL = new Set(['passed', 'failed', 'error', 'completed', 'cancelled']);
   const INTERVAL = 5000;
   const deadline = Date.now() + maxWaitMs;
 
@@ -645,30 +647,21 @@ async function pollInvocation(invocationId, maxWaitMs = 180000) {
     try {
       data = await xiFetch(`/v1/convai/test-invocations/${invocationId}`);
     } catch (e) {
-      console.warn('pollInvocation fetch error (will retry):', e);
+      console.warn('[pollInvocation] fetch error (will retry):', e);
       continue;
     }
 
-    console.log('[pollInvocation] raw response:', JSON.stringify(data));
+    const runs = data.test_runs || [];
+    if (!runs.length) continue; // not ready yet
 
-    const st = (data.status || '').toLowerCase();
+    const allDone = runs.every(r => TERMINAL.has((r.status || '').toLowerCase()));
+    if (!allDone) continue; // some still pending/processing
 
-    if (st === 'completed' || st === 'finished' || st === 'done') {
-      // Tally per-test pass/fail from test_runs array if present
-      const runs = data.test_runs || data.tests || [];
-      if (runs.length) {
-        const passed = runs.filter(r => r.passed === true || r.status === 'passed' || r.result === 'pass').length;
-        return { outcome: passed >= 2 ? 'success' : 'failure', passed, total: runs.length };
-      }
-      // Fallback: top-level passed flag
-      return { outcome: data.passed === true ? 'success' : 'failure', passed: data.passed ? 1 : 0, total: 1 };
-    }
-
-    if (st === 'failed' || st === 'error' || st === 'cancelled') {
-      return { outcome: 'failure', passed: 0, total: 0 };
-    }
-
-    // pending | processing | running — keep waiting
+    // All runs are terminal — tally results
+    const passed = runs.filter(r => (r.status || '').toLowerCase() === 'passed').length;
+    const total  = runs.length;
+    console.log(`[pollInvocation] done — ${passed}/${total} passed`);
+    return { outcome: passed >= 2 ? 'success' : 'failure', passed, total };
   }
 
   return { outcome: 'failure', passed: 0, total: 0 }; // timed out
@@ -720,8 +713,7 @@ async function runAgentTest() {
     // ── Step 2: Poll the single invocation until done ───────────
     const { outcome, passed, total } = await pollInvocation(invocationId);
 
-    const detail = total > 0 ? `${passed}/${total} passed` : undefined;
-    setTestStatus(outcome, detail);
+    setTestStatus(outcome);
 
   } catch (err) {
     setTestStatus('failure');
