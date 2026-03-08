@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Agents Dashboard</title>
+  <title>Conversation Intelligence</title>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="index.css"/>
@@ -28,6 +28,62 @@
     @keyframes spin{to{transform:rotate(360deg)}}
     .loading-text{font-size:.85rem;font-weight:600;color:var(--ink3);}
     .client-notice{background:var(--sky-l);border:1.5px solid var(--sky-m);border-radius:14px;padding:14px 20px;margin-bottom:28px;display:flex;align-items:center;gap:12px;font-size:.82rem;font-weight:600;color:#0369a1;}
+
+    /* ── Agent card image avatar ── */
+    .card-avatar img {
+      width:100%; height:100%;
+      object-fit:cover; border-radius:18px;
+    }
+
+    /* ── Icon/Image tab switcher in modal ── */
+    .avatar-tabs {
+      display:flex; gap:0; margin-bottom:12px;
+      border:1.5px solid var(--border); border-radius:10px; overflow:hidden;
+    }
+    .avatar-tab {
+      flex:1; padding:8px 0; text-align:center;
+      font-size:.75rem; font-weight:800; cursor:pointer;
+      background:transparent; border:none;
+      font-family:'Nunito',sans-serif; color:var(--ink3);
+      transition:all .15s;
+    }
+    .avatar-tab.active { background:var(--lav); color:#fff; }
+    .avatar-tab:not(.active):hover { background:var(--lav-l); color:var(--lav); }
+
+    /* ── Image upload zone ── */
+    .upload-zone {
+      border:2px dashed var(--border2); border-radius:14px;
+      padding:20px; text-align:center; cursor:pointer;
+      transition:all .2s; position:relative; background:var(--bg);
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color:var(--lav); background:var(--lav-l);
+    }
+    .upload-zone input[type=file] {
+      position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;
+    }
+    .upload-preview {
+      width:72px; height:72px; border-radius:14px;
+      object-fit:cover; margin:0 auto 8px;
+      display:block; border:2px solid var(--border);
+    }
+    .upload-placeholder-icon { font-size:2rem; margin-bottom:6px; opacity:.4; }
+    .upload-hint { font-size:.72rem; color:var(--ink3); font-weight:600; }
+    .upload-hint span { color:var(--lav); font-weight:800; }
+    .upload-remove {
+      display:inline-flex; align-items:center; gap:4px;
+      margin-top:8px; padding:4px 12px; border-radius:50px;
+      background:var(--rose-l); color:var(--rose); border:1.5px solid var(--rose-m);
+      font-size:.68rem; font-weight:700; cursor:pointer; font-family:'Nunito',sans-serif;
+    }
+    .upload-remove:hover { background:var(--rose); color:#fff; }
+    .upload-progress {
+      height:3px; background:var(--border); border-radius:3px; margin-top:10px; overflow:hidden;
+    }
+    .upload-progress-bar {
+      height:100%; width:0%; background:var(--lav);
+      transition:width .3s ease; border-radius:3px;
+    }
   </style>
 </head>
 <body>
@@ -72,21 +128,56 @@
       <input class="field-input mono" type="password" id="f-key" placeholder="sk-…"/>
     </div>
     <div class="divider"></div>
+
+    <!-- Avatar section with tabs -->
     <div class="field">
-      <label class="field-label">Icon</label>
-      <div class="emoji-row" id="emojiRow">
-        <div class="emoji-opt sel" data-e="🤖">🤖</div>
-        <div class="emoji-opt" data-e="🎙️">🎙️</div>
-        <div class="emoji-opt" data-e="💬">💬</div>
-        <div class="emoji-opt" data-e="🧠">🧠</div>
-        <div class="emoji-opt" data-e="⚙️">⚙️</div>
-        <div class="emoji-opt" data-e="🏭">🏭</div>
-        <div class="emoji-opt" data-e="📋">📋</div>
-        <div class="emoji-opt" data-e="🌐">🌐</div>
-        <div class="emoji-opt" data-e="🔬">🔬</div>
-        <div class="emoji-opt" data-e="📞">📞</div>
+      <label class="field-label">Agent Avatar</label>
+      <div class="avatar-tabs">
+        <button class="avatar-tab active" id="tabIcon" onclick="switchAvatarTab('icon')">🎭 Icon</button>
+        <button class="avatar-tab" id="tabImage" onclick="switchAvatarTab('image')">🖼️ Upload Photo</button>
+      </div>
+
+      <!-- Icon picker (default) -->
+      <div id="iconPicker">
+        <div class="emoji-row" id="emojiRow">
+          <div class="emoji-opt sel" data-e="🤖">🤖</div>
+          <div class="emoji-opt" data-e="🎙️">🎙️</div>
+          <div class="emoji-opt" data-e="💬">💬</div>
+          <div class="emoji-opt" data-e="🧠">🧠</div>
+          <div class="emoji-opt" data-e="⚙️">⚙️</div>
+          <div class="emoji-opt" data-e="🏭">🏭</div>
+          <div class="emoji-opt" data-e="📋">📋</div>
+          <div class="emoji-opt" data-e="🌐">🌐</div>
+          <div class="emoji-opt" data-e="🔬">🔬</div>
+          <div class="emoji-opt" data-e="📞">📞</div>
+        </div>
+      </div>
+
+      <!-- Image upload picker -->
+      <div id="imagePicker" style="display:none;">
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="avatarFileInput" accept="image/png,image/jpeg,image/webp,image/gif"
+            onchange="handleAvatarFile(this.files[0])"
+          />
+          <div id="uploadPlaceholder">
+            <div class="upload-placeholder-icon">📸</div>
+            <div class="upload-hint">Drop an image or <span>browse</span></div>
+            <div class="upload-hint" style="margin-top:2px;">PNG, JPG, WEBP · max 2 MB</div>
+          </div>
+          <div id="uploadPreviewWrap" style="display:none;">
+            <img id="uploadPreviewImg" class="upload-preview" src="" alt="preview"/>
+            <div class="upload-hint" id="uploadFileName"></div>
+          </div>
+        </div>
+        <div class="upload-progress" id="uploadProgress" style="display:none;">
+          <div class="upload-progress-bar" id="uploadProgressBar"></div>
+        </div>
+        <div style="text-align:center;" id="removeImgWrap" style="display:none;">
+          <button class="upload-remove" onclick="removeUploadedImage()">✕ Remove image</button>
+        </div>
       </div>
     </div>
+
     <div class="field">
       <label class="field-label">Card Colour</label>
       <div class="color-row">
@@ -110,13 +201,9 @@
 // ── CONFIG ────────────────────────────────────────────────────
 const SUPABASE_URL  = 'https://zkbkqihjtvbohjjsgwkv.supabase.co';
 const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprYmtxaWhqdHZib2hqanNnd2t2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTcyMzcsImV4cCI6MjA4NzQ3MzIzN30.PocVPJrZfEiGM7XGvewlWR2GlGFPn3KXkSClyoqC8_A';
-
-// ── BACKEND CONFIG ────────────────────────────────────────────
-// Change BACKEND_URL to your deployed backend URL in production.
-// e.g. 'https://indoo-backend.up.railway.app'
-const BACKEND_URL = 'https://agentdashboard-production-5777.up.railway.app';
-const API_SECRET  = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e'; 
-// ─────────────────────────────────────────────────────────────
+const BACKEND_URL   = 'https://agentdashboard-production-5777.up.railway.app';
+const API_SECRET    = '9a386d5511ebaf9086545ad5ffb20da4664a271ab909e106a67b96fc3d18887e';
+const STORAGE_BUCKET = 'agent-avatars'; // Supabase Storage bucket name
 
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -125,34 +212,90 @@ const esc = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 const initials = n => { if (!n) return '?'; const p=n.trim().split(' '); return p.length>=2?(p[0][0]+p[p.length-1][0]).toUpperCase():n.slice(0,2).toUpperCase(); };
 
 let currentUser=null, agents=[], editId=null, selEmoji='🤖', selColor='lav';
+let avatarTab = 'icon';      // 'icon' | 'image'
+let pendingImageFile = null; // File object waiting to be uploaded
+let uploadedImageUrl = null; // Final public URL after upload (or existing URL when editing)
 
+// ── Emoji / colour picker wiring ─────────────────────────────
 document.querySelectorAll('.emoji-opt').forEach(el=>{el.onclick=()=>{document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');selEmoji=el.dataset.e;};});
 document.querySelectorAll('.color-opt').forEach(el=>{el.onclick=()=>{document.querySelectorAll('.color-opt').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');selColor=el.dataset.c;};});
 
+// ── Drag-over styling ─────────────────────────────────────────
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if (f) handleAvatarFile(f); });
+
+// ── Avatar tab switching ──────────────────────────────────────
+function switchAvatarTab(tab) {
+  avatarTab = tab;
+  document.getElementById('tabIcon').classList.toggle('active', tab === 'icon');
+  document.getElementById('tabImage').classList.toggle('active', tab === 'image');
+  document.getElementById('iconPicker').style.display  = tab === 'icon'  ? '' : 'none';
+  document.getElementById('imagePicker').style.display = tab === 'image' ? '' : 'none';
+}
+
+// ── Handle file selection ─────────────────────────────────────
+function handleAvatarFile(file) {
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { showErr('Image must be under 2 MB'); return; }
+  pendingImageFile = file;
+  uploadedImageUrl = null; // will be set after actual upload on save
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('uploadPlaceholder').style.display = 'none';
+    document.getElementById('uploadPreviewWrap').style.display = '';
+    document.getElementById('uploadPreviewImg').src = e.target.result;
+    document.getElementById('uploadFileName').textContent = file.name;
+    document.getElementById('removeImgWrap').style.display = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeUploadedImage() {
+  pendingImageFile = null;
+  uploadedImageUrl = null;
+  document.getElementById('uploadPlaceholder').style.display = '';
+  document.getElementById('uploadPreviewWrap').style.display = 'none';
+  document.getElementById('uploadFileName').textContent = '';
+  document.getElementById('removeImgWrap').style.display = 'none';
+  document.getElementById('avatarFileInput').value = '';
+}
+
+// ── Upload image to Supabase Storage ─────────────────────────
+async function uploadAvatarImage(agentId) {
+  if (!pendingImageFile) return null;
+  const ext  = pendingImageFile.name.split('.').pop().toLowerCase() || 'jpg';
+  const path = `${agentId}/avatar.${ext}`;
+
+  // Show progress bar
+  document.getElementById('uploadProgress').style.display = '';
+  document.getElementById('uploadProgressBar').style.width = '40%';
+
+  const { error } = await sb.storage
+    .from(STORAGE_BUCKET)
+    .upload(path, pendingImageFile, { upsert: true, contentType: pendingImageFile.type });
+
+  document.getElementById('uploadProgressBar').style.width = '100%';
+  setTimeout(() => { document.getElementById('uploadProgress').style.display = 'none'; document.getElementById('uploadProgressBar').style.width = '0%'; }, 600);
+
+  if (error) throw new Error('Image upload failed: ' + error.message);
+
+  const { data: urlData } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+  return urlData.publicUrl + `?t=${Date.now()}`; // cache-bust
+}
+
 // ── BACKEND HELPER ────────────────────────────────────────────
-// Centralised fetch wrapper for all backend API calls.
-// Automatically attaches the API secret and Supabase auth token.
 async function backendFetch(path, options = {}) {
   const { data: { session } } = await sb.auth.getSession();
   const token = session?.access_token;
-
   const res = await fetch(`${BACKEND_URL}${path}`, {
     ...options,
-    headers: {
-      'Content-Type':  'application/json',
-      'x-api-secret':  API_SECRET,
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
+    headers: { 'Content-Type':'application/json', 'x-api-secret':API_SECRET, ...(token?{'Authorization':`Bearer ${token}`}:{}), ...(options.headers||{}) },
   });
-
   const data = await res.json();
-
-  if (!res.ok || !data.success) {
-    const msg = data?.error?.message || `Backend error ${res.status}`;
-    throw new Error(msg);
-  }
-
+  if (!res.ok || !data.success) throw new Error(data?.error?.message || `Backend error ${res.status}`);
   return data;
 }
 
@@ -202,7 +345,6 @@ function renderTopbar() {
 }
 
 async function loadAgents() {
-  // Still reads agents from Supabase directly (fast, no ElevenLabs involved)
   if (currentUser.role === 'admin') {
     const { data } = await sb.from('agents').select('*').order('created_at');
     agents = data || [];
@@ -211,6 +353,14 @@ async function loadAgents() {
     agents = (data||[]).map(r=>r.agents).filter(Boolean);
   }
   renderMain();
+}
+
+// ── Render agent avatar (image or emoji) ─────────────────────
+function renderCardAvatar(ag) {
+  if (ag.image_url) {
+    return `<div class="card-avatar" data-color="${ag.color||'lav'}" style="background:none;overflow:hidden;"><img src="${esc(ag.image_url)}" alt="${esc(ag.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;"/></div>`;
+  }
+  return `<div class="card-avatar" data-color="${ag.color||'lav'}">${ag.emoji||'🤖'}</div>`;
 }
 
 function renderMain() {
@@ -234,7 +384,7 @@ function renderMain() {
       html += `
         <div class="agent-card" data-color="${ag.color||'lav'}" style="animation-delay:${i*55}ms" onclick="openDashboard('${ag.id}')">
           <div class="card-top">
-            <div class="card-avatar" data-color="${ag.color||'lav'}">${ag.emoji||'🤖'}</div>
+            ${renderCardAvatar(ag)}
             ${isAdmin?`<div class="menu-wrap"><button class="menu-btn" onclick="toggleMenu(event,'dd-${ag.id}')">⋯</button><div class="dropdown" id="dd-${ag.id}"><div class="dd-item" onclick="event.stopPropagation();openEdit('${ag.id}')">✏️ Edit</div><div class="dd-item danger" onclick="event.stopPropagation();removeAgent('${ag.id}')">🗑 Remove</div></div></div>`:''}
           </div>
           <div class="card-name">${esc(ag.name)}</div>
@@ -251,7 +401,6 @@ function renderMain() {
   html += `</div>`;
   main.innerHTML = html;
 
-  // ── Fetch stats for each card via backend ─────────────────
   agents.forEach(ag => fetchStats(ag));
 }
 
@@ -262,70 +411,171 @@ function fmtRelDate(ts) {
   return new Date(ts).toLocaleDateString('en-IN',{day:'numeric',month:'short'});
 }
 
-// ── STATS (now via backend, not direct ElevenLabs) ────────────
 async function fetchStats(ag) {
   const el = document.getElementById(`stats-${ag.id}`);
   if (!el) return;
-
   try {
     const data = await backendFetch(`/api/agents/${ag.id}/stats`);
     const { totalCached, lastSyncedAt } = data.data;
-
-    const syncDate = lastSyncedAt
-      ? `Last synced ${fmtRelDate(lastSyncedAt)}`
-      : 'Never synced';
-
-    el.innerHTML = `
-      <span class="stat-pill sp-sessions">💬 ${totalCached} cached</span>
-      <span class="stat-pill sp-loading">${syncDate}</span>`;
+    const syncDate = lastSyncedAt ? `Last synced ${fmtRelDate(lastSyncedAt)}` : 'Never synced';
+    el.innerHTML = `<span class="stat-pill sp-sessions">💬 ${totalCached} cached</span><span class="stat-pill sp-loading">${syncDate}</span>`;
   } catch (err) {
-    // Backend might not be running yet — fall back gracefully
     el.innerHTML = `<span class="stat-pill sp-loading" title="${esc(err.message)}">Backend offline</span>`;
   }
 }
 
-// ── OPEN DASHBOARD ────────────────────────────────────────────
-// Now passes agentDbId (Supabase UUID) so dashboard.html can call the backend
+// ── OPEN DASHBOARD — now also passes image_url ────────────────
 function openDashboard(id) {
   const ag = agents.find(a => a.id === id);
   if (!ag) return;
-
   const p = new URLSearchParams({
-    agentDbId: ag.id,           // ← NEW: Supabase UUID for backend calls
+    agentDbId: ag.id,
     name:      ag.name,
     agentId:   ag.agent_id || '',
     emoji:     ag.emoji    || '🤖',
     color:     ag.color    || 'lav',
+    ...(ag.image_url ? { imageUrl: ag.image_url } : {}),
   });
-  // Note: api_key is NO LONGER passed in the URL — backend handles it server-side
   window.location.href = `dashboard.html?${p.toString()}`;
 }
 
-// ── AGENT CRUD (unchanged — still uses Supabase directly) ─────
+// ── MODAL helpers ─────────────────────────────────────────────
 function toggleMenu(e,id){e.stopPropagation();document.querySelectorAll('.dropdown').forEach(d=>{if(d.id!==id)d.classList.remove('open');});document.getElementById(id)?.classList.toggle('open');}
 document.addEventListener('click',()=>document.querySelectorAll('.dropdown').forEach(d=>d.classList.remove('open')));
 
-function openModal(){editId=null;selEmoji='🤖';selColor='lav';['f-name','f-id','f-key'].forEach(id=>document.getElementById(id).value='');document.getElementById('modalErr').style.display='none';document.getElementById('modalTitle').textContent='✨ Add New Agent';document.getElementById('btnSubmit').textContent='Add Agent ✨';document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.toggle('sel',e.dataset.e==='🤖'));document.querySelectorAll('.color-opt').forEach(e=>e.classList.toggle('sel',e.dataset.c==='lav'));document.getElementById('overlay').classList.add('open');setTimeout(()=>document.getElementById('f-name').focus(),100);}
-function openEdit(id){const ag=agents.find(a=>a.id===id);if(!ag)return;editId=id;selEmoji=ag.emoji||'🤖';selColor=ag.color||'lav';document.getElementById('f-name').value=ag.name||'';document.getElementById('f-id').value=ag.agent_id||'';document.getElementById('f-key').value=ag.api_key||'';document.getElementById('modalErr').style.display='none';document.getElementById('modalTitle').textContent='✏️ Edit Agent';document.getElementById('btnSubmit').textContent='Save Changes';document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.toggle('sel',e.dataset.e===selEmoji));document.querySelectorAll('.color-opt').forEach(e=>e.classList.toggle('sel',e.dataset.c===selColor));document.getElementById('overlay').classList.add('open');}
-function closeModal(){document.getElementById('overlay').classList.remove('open');}
-
-async function saveAgent(){
-  const name=document.getElementById('f-name').value.trim();
-  const agentId=document.getElementById('f-id').value.trim();
-  const apiKey=document.getElementById('f-key').value.trim();
-  if(!name){showErr('Please enter a name 🙏');return;}
-  const btn=document.getElementById('btnSubmit');btn.disabled=true;btn.textContent='Saving…';
-  if(editId){
-    const{error}=await sb.from('agents').update({name,agent_id:agentId,api_key:apiKey,emoji:selEmoji,color:selColor}).eq('id',editId);
-    if(error){showErr(error.message);btn.disabled=false;btn.textContent='Save Changes';return;}
-  } else {
-    const{error}=await sb.from('agents').insert({name,agent_id:agentId,api_key:apiKey,emoji:selEmoji,color:selColor,created_by:currentUser.id});
-    if(error){showErr(error.message);btn.disabled=false;btn.textContent='Add Agent ✨';return;}
-  }
-  closeModal();await loadAgents();
+function _resetModal() {
+  pendingImageFile = null;
+  uploadedImageUrl = null;
+  avatarTab = 'icon';
+  selEmoji = '🤖';
+  selColor = 'lav';
+  ['f-name','f-id','f-key'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('modalErr').style.display='none';
+  switchAvatarTab('icon');
+  removeUploadedImage();
+  document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.toggle('sel',e.dataset.e==='🤖'));
+  document.querySelectorAll('.color-opt').forEach(e=>e.classList.toggle('sel',e.dataset.c==='lav'));
 }
+
+function openModal() {
+  editId = null;
+  _resetModal();
+  document.getElementById('modalTitle').textContent = '✨ Add New Agent';
+  document.getElementById('btnSubmit').textContent  = 'Add Agent ✨';
+  document.getElementById('overlay').classList.add('open');
+  setTimeout(()=>document.getElementById('f-name').focus(),100);
+}
+
+function openEdit(id) {
+  const ag = agents.find(a=>a.id===id);
+  if (!ag) return;
+  editId   = id;
+  selEmoji = ag.emoji || '🤖';
+  selColor = ag.color || 'lav';
+  pendingImageFile = null;
+
+  document.getElementById('f-name').value = ag.name      || '';
+  document.getElementById('f-id').value   = ag.agent_id  || '';
+  document.getElementById('f-key').value  = ag.api_key   || '';
+  document.getElementById('modalErr').style.display = 'none';
+  document.getElementById('modalTitle').textContent = '✏️ Edit Agent';
+  document.getElementById('btnSubmit').textContent  = 'Save Changes';
+  document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.toggle('sel',e.dataset.e===selEmoji));
+  document.querySelectorAll('.color-opt').forEach(e=>e.classList.toggle('sel',e.dataset.c===selColor));
+
+  // If agent already has an image, show it in the upload tab
+  if (ag.image_url) {
+    uploadedImageUrl = ag.image_url;
+    switchAvatarTab('image');
+    document.getElementById('uploadPlaceholder').style.display   = 'none';
+    document.getElementById('uploadPreviewWrap').style.display   = '';
+    document.getElementById('uploadPreviewImg').src              = ag.image_url;
+    document.getElementById('uploadFileName').textContent        = 'Current image';
+    document.getElementById('removeImgWrap').style.display       = '';
+  } else {
+    switchAvatarTab('icon');
+    uploadedImageUrl = null;
+    removeUploadedImage();
+  }
+
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+
+// ── SAVE AGENT ────────────────────────────────────────────────
+async function saveAgent() {
+  const name    = document.getElementById('f-name').value.trim();
+  const agentId = document.getElementById('f-id').value.trim();
+  const apiKey  = document.getElementById('f-key').value.trim();
+  if (!name) { showErr('Please enter a name 🙏'); return; }
+
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    // ── Determine final image URL ──────────────────────────────
+    let finalImageUrl = null;
+
+    if (avatarTab === 'image') {
+      if (pendingImageFile) {
+        // Need a real ID to name the storage path
+        // For new agents: insert first (without image), then upload, then update
+        // For edits: upload now using existing editId
+        if (editId) {
+          finalImageUrl = await uploadAvatarImage(editId);
+        } else {
+          // Will upload after insert — handled below
+          finalImageUrl = '__PENDING__';
+        }
+      } else if (uploadedImageUrl) {
+        // Kept existing image
+        finalImageUrl = uploadedImageUrl;
+      }
+      // If neither — user opened image tab but didn't pick anything, fall through to null
+    }
+    // avatarTab === 'icon' → finalImageUrl stays null (use emoji)
+
+    if (editId) {
+      const payload = { name, agent_id: agentId, api_key: apiKey, emoji: selEmoji, color: selColor, image_url: finalImageUrl };
+      const { error } = await sb.from('agents').update(payload).eq('id', editId);
+      if (error) throw new Error(error.message);
+    } else {
+      // Insert first to get the new row's UUID
+      const { data: inserted, error } = await sb.from('agents')
+        .insert({ name, agent_id: agentId, api_key: apiKey, emoji: selEmoji, color: selColor, image_url: null, created_by: currentUser.id })
+        .select('id').single();
+      if (error) throw new Error(error.message);
+
+      // Now upload image if pending and update the row
+      if (finalImageUrl === '__PENDING__') {
+        finalImageUrl = await uploadAvatarImage(inserted.id);
+        await sb.from('agents').update({ image_url: finalImageUrl }).eq('id', inserted.id);
+      }
+    }
+
+    closeModal();
+    await loadAgents();
+  } catch (err) {
+    showErr(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = editId ? 'Save Changes' : 'Add Agent ✨';
+  }
+}
+
 function showErr(msg){const el=document.getElementById('modalErr');el.textContent=msg;el.style.display='block';}
-async function removeAgent(id){if(!confirm('Remove this agent?'))return;await sb.from('agent_access').delete().eq('agent_id',id);await sb.from('agents').delete().eq('id',id);await loadAgents();}
+
+async function removeAgent(id){
+  if(!confirm('Remove this agent?'))return;
+  // Clean up storage
+  await sb.storage.from(STORAGE_BUCKET).remove([`${id}/avatar.jpg`,`${id}/avatar.png`,`${id}/avatar.webp`,`${id}/avatar.gif`]);
+  await sb.from('agent_access').delete().eq('agent_id',id);
+  await sb.from('agents').delete().eq('id',id);
+  await loadAgents();
+}
+
 async function logout(){await sb.auth.signOut();window.location.href='login.html';}
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='Enter'&&document.getElementById('overlay').classList.contains('open'))saveAgent();});

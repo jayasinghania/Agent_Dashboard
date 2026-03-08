@@ -380,7 +380,7 @@
   <div class="modal-box">
     <div class="modal-header">
       <span class="modal-title">📥 Export Chat History</span>
-      <button class="modal-close" onclick="closeExportModal()">✕</button>
+      <button class="modal-close" onclick="closeExportModal()">Download Report</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
 
@@ -426,6 +426,11 @@
             <span class="export-field-label">Non-KB Questions</span>
             <span class="export-field-desc">questions not in knowledge base</span>
           </label>
+          <label class="export-field-item" style="border-color:var(--lav-m);background:var(--lav-l);">
+            <input type="checkbox" id="ef-chathistory"/>
+            <span class="export-field-label" style="color:var(--lav);">💬 Full Chat History</span>
+            <span class="export-field-desc">added as a separate sheet</span>
+          </label>
         </div>
       </div>
 
@@ -457,14 +462,24 @@ const P          = new URLSearchParams(location.search);
 const agentDbId  = P.get('agentDbId') || '';
 const agentName  = P.get('name')      || 'Agent';
 const agentIdVal = P.get('agentId')   || '';
-const agentEmoji = P.get('emoji')     || '🤖';
-const agentColor = P.get('color')     || 'lav';
+const agentEmoji    = P.get('emoji')    || '🤖';
+const agentColor    = P.get('color')    || 'lav';
+const agentImageUrl = P.get('imageUrl') || '';
 
 document.title = `Agent Analytics — ${agentName}`;
 document.getElementById('agentName').textContent = agentName;
 document.getElementById('agentIdEl').textContent = agentIdVal || 'No agent ID';
 const avEl = document.getElementById('agentAv');
-avEl.textContent = agentEmoji; avEl.dataset.color = agentColor;
+if (agentImageUrl) {
+  // Show uploaded image in topbar avatar
+  avEl.style.background   = 'none';
+  avEl.style.overflow     = 'hidden';
+  avEl.style.padding      = '0';
+  avEl.innerHTML = `<img src="${agentImageUrl}" alt="${agentName}" style="width:100%;height:100%;object-fit:cover;border-radius:11px;display:block;"/>`;
+} else {
+  avEl.textContent      = agentEmoji;
+  avEl.dataset.color    = agentColor;
+}
 
 let allConvs = [], userMap = {}, userLatestConv = {};
 let activeUser = null, activeConv = null, activeDayFilter = null;
@@ -1172,11 +1187,12 @@ function downloadExportXlsx() {
   const rows = _getFilteredRows();
   if (!rows.length) { alert('No conversations found for the selected range.'); return; }
 
-  const inclName    = document.getElementById('ef-name').checked;
-  const inclDate    = document.getElementById('ef-date').checked;
-  const inclSummary = document.getElementById('ef-summary').checked;
-  const inclKb      = document.getElementById('ef-kb').checked;
-  const inclNonKb   = document.getElementById('ef-nonkb').checked;
+  const inclName        = document.getElementById('ef-name').checked;
+  const inclDate        = document.getElementById('ef-date').checked;
+  const inclSummary     = document.getElementById('ef-summary').checked;
+  const inclKb          = document.getElementById('ef-kb').checked;
+  const inclNonKb       = document.getElementById('ef-nonkb').checked;
+  const inclChatHistory = document.getElementById('ef-chathistory').checked;
 
   const header = [
     ...(inclName    ? ['User Name']           : []),
@@ -1186,33 +1202,89 @@ function downloadExportXlsx() {
     ...(inclNonKb   ? ['Non-KB Questions']    : []),
   ];
 
-  if (!header.length) { alert('Please select at least one field to export.'); return; }
-
-  const dataRows = rows.map(r => {
-    const name    = extractUserName(r) || r.user_name || '';
-    const date    = r.start_time_unix
-      ? new Date(r.start_time_unix * 1000).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
-      : '';
-    const summary = r.transcript_summary || '';
-    const kb      = _fmtList(r.kb_question_list);
-    const nonKb   = _fmtList(r.non_kb_question_list);
-    const row = {};
-    if (inclName)    row['User Name']          = name;
-    if (inclDate)    row['Date']               = date;
-    if (inclSummary) row['Transcript Summary'] = summary;
-    if (inclKb)      row['KB Questions']       = kb;
-    if (inclNonKb)   row['Non-KB Questions']   = nonKb;
-    return row;
-  });
-
-  const ws = XLSX.utils.json_to_sheet(dataRows, { header });
-
-  // Style header row width
-  const colWidths = header.map(h => ({ wch: Math.max(h.length + 4, 18) }));
-  ws['!cols'] = colWidths;
+  if (!header.length && !inclChatHistory) { alert('Please select at least one field to export.'); return; }
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Chat History');
+
+  // ── Sheet 1: Summary ─────────────────────────────────────────
+  if (header.length) {
+    const dataRows = rows.map(r => {
+      const name    = extractUserName(r) || r.user_name || '';
+      const date    = r.start_time_unix
+        ? new Date(r.start_time_unix * 1000).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+        : '';
+      const summary = r.transcript_summary || '';
+      const kb      = _fmtList(r.kb_question_list);
+      const nonKb   = _fmtList(r.non_kb_question_list);
+      const row = {};
+      if (inclName)    row['User Name']          = name;
+      if (inclDate)    row['Date']               = date;
+      if (inclSummary) row['Transcript Summary'] = summary;
+      if (inclKb)      row['KB Questions']       = kb;
+      if (inclNonKb)   row['Non-KB Questions']   = nonKb;
+      return row;
+    });
+    const ws1 = XLSX.utils.json_to_sheet(dataRows, { header });
+    ws1['!cols'] = header.map(h => ({ wch: Math.max(h.length + 4, 22) }));
+    XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+  }
+
+  // ── Sheet 2: Full Chat History (optional) ────────────────────
+  if (inclChatHistory) {
+    const chatRows = [];
+    rows.forEach(r => {
+      const userName = extractUserName(r) || r.user_name || 'Unknown';
+      const sessionDate = r.start_time_unix
+        ? new Date(r.start_time_unix * 1000).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+        : '';
+      const transcript = rowToTranscript(r);
+
+      if (!transcript.length) {
+        // Still include a row so the session is represented
+        chatRows.push({
+          'Session ID':   r.conversation_id || '',
+          'User Name':    userName,
+          'Date':         sessionDate,
+          'Turn #':       '',
+          'Speaker':      '',
+          'Message':      '(no transcript)',
+          'Time in Call': '',
+        });
+      } else {
+        transcript.forEach((t, idx) => {
+          const speaker = t.role === 'user' ? userName : 'Agent';
+          const timeSecs = t.time_in_call_secs != null
+            ? `${String(Math.floor(t.time_in_call_secs/60)).padStart(2,'0')}:${String(t.time_in_call_secs%60).padStart(2,'0')}`
+            : '';
+          chatRows.push({
+            'Session ID':   idx === 0 ? (r.conversation_id || '') : '',  // only on first row per session
+            'User Name':    idx === 0 ? userName    : '',
+            'Date':         idx === 0 ? sessionDate : '',
+            'Turn #':       idx + 1,
+            'Speaker':      speaker,
+            'Message':      t.message || t.text || '',
+            'Time in Call': timeSecs,
+          });
+        });
+      }
+
+      // Blank separator row between sessions for readability
+      chatRows.push({ 'Session ID':'','User Name':'','Date':'','Turn #':'','Speaker':'','Message':'','Time in Call':'' });
+    });
+
+    const chatHeader = ['Session ID','User Name','Date','Turn #','Speaker','Message','Time in Call'];
+    const ws2 = XLSX.utils.json_to_sheet(chatRows, { header: chatHeader });
+    ws2['!cols'] = [
+      { wch: 36 }, // Session ID
+      { wch: 20 }, // User Name
+      { wch: 22 }, // Date
+      { wch: 8  }, // Turn #
+      { wch: 16 }, // Speaker
+      { wch: 80 }, // Message (wide)
+      { wch: 12 }, // Time in Call
+    ];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Chat History');
+  }
 
   const bounds   = _getExportBounds();
   const fromDate = bounds ? new Date(bounds.fromUnix*1000).toISOString().slice(0,10) : 'export';
