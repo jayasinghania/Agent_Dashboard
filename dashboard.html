@@ -631,22 +631,54 @@ function setTestStatus(status, detail) {
   val.textContent = s.icon;
 }
 
-async function pollInvocation(invocationId, maxWaitMs = 120000) {
-  const interval = 4000;
+async function pollInvocation(invocationId, maxWaitMs = 180000) {
+  // GET /v1/convai/test-invocations/:test_invocation_id
+  // Expected terminal statuses: completed | failed | error
+  // Running statuses: pending | processing | running
+  const INTERVAL = 5000;
   const deadline = Date.now() + maxWaitMs;
+
   while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, interval));
-    const data = await xiFetch(`/v1/convai/test-invocations/${invocationId}`);
-    // ElevenLabs statuses: pending | processing | completed | failed
+    await new Promise(r => setTimeout(r, INTERVAL));
+
+    let data;
+    try {
+      data = await xiFetch(`/v1/convai/test-invocations/${invocationId}`);
+    } catch (e) {
+      console.warn('pollInvocation fetch error (will retry):', e);
+      continue;
+    }
+
+    console.log('[pollInvocation] raw response:', JSON.stringify(data));
+
     const st = (data.status || '').toLowerCase();
-    if (st === 'completed') return data.passed === true ? 'success' : 'failure';
-    if (st === 'failed' || st === 'error') return 'failure';
-    // pending / processing — keep polling
+
+    if (st === 'completed' || st === 'finished' || st === 'done') {
+      // Tally per-test pass/fail from test_runs array if present
+      const runs = data.test_runs || data.tests || [];
+      if (runs.length) {
+        const passed = runs.filter(r => r.passed === true || r.status === 'passed' || r.result === 'pass').length;
+        return { outcome: passed >= 2 ? 'success' : 'failure', passed, total: runs.length };
+      }
+      // Fallback: top-level passed flag
+      return { outcome: data.passed === true ? 'success' : 'failure', passed: data.passed ? 1 : 0, total: 1 };
+    }
+
+    if (st === 'failed' || st === 'error' || st === 'cancelled') {
+      return { outcome: 'failure', passed: 0, total: 0 };
+    }
+
+    // pending | processing | running — keep waiting
   }
-  return 'failure'; // timed out after 2 min
+
+  return { outcome: 'failure', passed: 0, total: 0 }; // timed out
 }
 
+let _testRunning = false; // guard against double-clicks
+
 async function runAgentTest() {
+  if (_testRunning) return; // already in progress
+
   if (!XI_API_KEY) {
     alert('ElevenLabs API key not found for this agent.\nMake sure the api_key column is set in your agents table.');
     return;
@@ -655,42 +687,47 @@ async function runAgentTest() {
     alert('No ElevenLabs Agent ID found for this agent.\nMake sure the agent_id column is set in your agents table.');
     return;
   }
+
+  _testRunning = true;
   const btn = document.getElementById('testAgentBtn');
   btn.disabled = true;
   btn.textContent = '⏳ Running…';
-  setTestStatus('pending');
+  setTestStatus('pending', 'Starting…');
 
   try {
-    // Step 1 — trigger all 5 tests
-    // API expects: { "tests": [ { "test_id": "..." }, ... ] }
+    // ── Step 1: POST once to trigger all tests ──────────────────
+    // Returns: { test_invocation_id: "...", status: "pending", ... }
+    console.log('[runAgentTest] Triggering tests for agent:', XI_AGENT_ID);
     const triggerRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/run-tests`, {
       method: 'POST',
       body: JSON.stringify({ tests: XI_TEST_IDS.map(id => ({ test_id: id })) }),
     });
 
-    // Response shape: { test_runs: [ { test_invocation_id: "...", status: "pending", ... } ] }
-    const testRuns = triggerRes.test_runs || [];
+    console.log('[runAgentTest] Trigger response:', JSON.stringify(triggerRes));
 
-    if (!testRuns.length) throw new Error('No test runs returned');
+    // The API returns a single test_invocation_id for the whole batch
+    const invocationId = triggerRes.test_invocation_id
+      || (triggerRes.test_runs && triggerRes.test_runs[0]?.test_invocation_id)
+      || null;
 
-    const invocationIds = testRuns.map(r => r.test_invocation_id).filter(Boolean);
-
-    // Step 2 — poll all invocations in parallel
-    const results = await Promise.all(invocationIds.map(id => pollInvocation(id)));
-
-    const passed = results.filter(r => r === 'success').length;
-    const total  = results.length;
-
-    // Rule: if ≥2 pass → success, otherwise failure
-    if (passed >= 2) {
-      setTestStatus('success', `${passed}/${total} passed`);
-    } else {
-      setTestStatus('failure', `${passed}/${total} passed`);
+    if (!invocationId) {
+      throw new Error(`run-tests returned no invocation ID. Response: ${JSON.stringify(triggerRes)}`);
     }
+
+    console.log('[runAgentTest] Polling invocation:', invocationId);
+    setTestStatus('pending', 'Tests running…');
+
+    // ── Step 2: Poll the single invocation until done ───────────
+    const { outcome, passed, total } = await pollInvocation(invocationId);
+
+    const detail = total > 0 ? `${passed}/${total} passed` : undefined;
+    setTestStatus(outcome, detail);
+
   } catch (err) {
     setTestStatus('failure');
-    console.error('Agent test error:', err);
+    console.error('[runAgentTest] error:', err);
   } finally {
+    _testRunning = false;
     btn.disabled = false;
     btn.textContent = '🧪 Test Agent';
   }
