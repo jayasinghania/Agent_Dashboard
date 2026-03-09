@@ -591,15 +591,6 @@ function extractUserName(row) {
 const fmtCost    = c => { if (c === null || c === undefined) return null; if (c === 0) return '0 cr'; return `${Math.round(c)} cr`; };
 const fmtTokens  = n => { if (!n && n !== 0) return '—'; if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M'; if (n >= 1_000) return (n/1_000).toFixed(1)+'K'; return String(n); };
 
-// ── ElevenLabs config ─────────────────────────────────────────
-const XI_TEST_IDS = [
-  'test_3501khk9es7se6sa5v80dqfymy5p',
-  'test_1601khnxeyt8e6nrs7e9nwh1af0b',
-  'test_8001khttb2hjfy9t68fcgt8d7pg9',
-  'test_4901khnhzkgqffa94mvtb5kkkq0n',
-  'test_1901khbh1446fybaxgd4sa6j4e7q',
-];
-
 async function xiFetch(path, options = {}) {
   const res = await fetch(`https://api.elevenlabs.io${path}`, {
     ...options,
@@ -695,11 +686,23 @@ async function runAgentTest() {
   setTestStatus('pending', 'Starting…');
 
   try {
-    // Step 1: POST to trigger tests — returns { id: "suite_...", test_runs: [...] }
+    // Step 1: Fetch the list of tests configured for this agent
+    console.log('[runAgentTest] Fetching tests for agent:', XI_AGENT_ID);
+    const testsRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/tests`);
+    console.log('[runAgentTest] Tests response:', JSON.stringify(testsRes));
+
+    const testIds = (testsRes.tests || testsRes || []).map(t => t.test_id || t.id).filter(Boolean);
+    if (!testIds.length) {
+      alert('No tests found for this agent.\nAdd tests in your ElevenLabs dashboard first.');
+      return;
+    }
+    console.log('[runAgentTest] Found', testIds.length, 'tests:', testIds);
+
+    // Step 2: POST to trigger all tests — returns { id: "suite_...", test_runs: [...] }
     console.log('[runAgentTest] Triggering for agent:', XI_AGENT_ID);
     const triggerRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/run-tests`, {
       method: 'POST',
-      body: JSON.stringify({ tests: XI_TEST_IDS.map(id => ({ test_id: id })) }),
+      body: JSON.stringify({ tests: testIds.map(id => ({ test_id: id })) }),
     });
     console.log('[runAgentTest] POST response:', JSON.stringify(triggerRes));
 
