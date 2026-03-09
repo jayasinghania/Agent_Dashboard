@@ -693,12 +693,14 @@ async function runAgentTest() {
     const testsRes = await xiFetch(`/v1/convai/agent-testing?page_size=100`);
     console.log('[runAgentTest] agent-testing response:', JSON.stringify(testsRes));
 
-    const testIds = (testsRes.tests || []).map(t => t.test_id || t.id).filter(Boolean);
+    const allTests = testsRes.tests || [];
+    const agentTests = allTests.filter(t => !t.agent_id || t.agent_id === XI_AGENT_ID);
+    const testIds = agentTests.map(t => t.test_id || t.id).filter(Boolean);
     if (!testIds.length) {
-      alert('No tests found in your ElevenLabs workspace.\nCreate tests in the ElevenLabs dashboard first.');
+      alert('No tests found for this agent.\nCreate tests in the ElevenLabs dashboard first.');
       return;
     }
-    console.log('[runAgentTest] Found', testIds.length, 'test(s):', testIds);
+    console.log('[runAgentTest] Running', testIds.length, 'test(s) for agent:', testIds);
 
     // Step 2: POST to trigger all tests — returns { id: "suite_...", test_runs: [...] }
     console.log('[runAgentTest] Triggering for agent:', XI_AGENT_ID);
