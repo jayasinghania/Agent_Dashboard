@@ -471,7 +471,6 @@ document.getElementById('agentName').textContent = agentName;
 document.getElementById('agentIdEl').textContent = agentIdVal || 'No agent ID';
 const avEl = document.getElementById('agentAv');
 if (agentImageUrl) {
-  // Show uploaded image in topbar avatar
   avEl.style.background   = 'none';
   avEl.style.overflow     = 'hidden';
   avEl.style.padding      = '0';
@@ -484,10 +483,10 @@ if (agentImageUrl) {
 let allConvs = [], userMap = {}, userLatestConv = {};
 let activeUser = null, activeConv = null, activeDayFilter = null;
 let chartInst = null, currentUserRole = null;
-let _chartRange = 30; // default 30 days
-let _testStatus = 'idle'; // idle | pending | success | failure
-let XI_API_KEY  = '';        // loaded from agents table on init
-let XI_AGENT_ID = agentIdVal; // overwritten from DB on init
+let _chartRange = 30;
+let _testStatus = 'idle';
+let XI_API_KEY  = '';
+let XI_AGENT_ID = agentIdVal;
 
 async function backendFetch(path, options = {}) {
   const { data: { session } } = await sb.auth.getSession();
@@ -601,6 +600,17 @@ const XI_TEST_IDS = [
   'test_1901khbh1446fybaxgd4sa6j4e7q',
 ];
 
+// Max number of poll attempts before giving up (30 attempts × 5s = 150s max)
+const POLL_MAX_ATTEMPTS = 30;
+const POLL_INTERVAL_MS  = 5000;
+
+// All statuses considered "terminal" by the ElevenLabs API
+const TERMINAL_STATUSES = new Set([
+  'completed', 'complete', 'finished', 'done', 'success', 'succeeded',
+  'passed',
+  'failed', 'failure', 'error', 'errored', 'cancelled', 'canceled',
+]);
+
 async function xiFetch(path, options = {}) {
   const res = await fetch(`https://api.elevenlabs.io${path}`, {
     ...options,
@@ -631,53 +641,64 @@ function setTestStatus(status, detail) {
   val.textContent = s.icon;
 }
 
-async function pollInvocation(invocationId, maxWaitMs = 180000) {
-  // GET /v1/convai/test-invocations/:test_invocation_id
-  // Expected terminal statuses: completed | failed | error
-  // Running statuses: pending | processing | running
-  const INTERVAL = 5000;
-  const deadline = Date.now() + maxWaitMs;
-
-  while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, INTERVAL));
+/**
+ * Polls a single test invocation until it reaches a terminal state.
+ * Exits after POLL_MAX_ATTEMPTS polls regardless of status to prevent infinite loops.
+ */
+async function pollInvocation(invocationId) {
+  for (let attempt = 1; attempt <= POLL_MAX_ATTEMPTS; attempt++) {
+    // Wait before each poll (including the first — gives the API time to start)
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
     let data;
     try {
       data = await xiFetch(`/v1/convai/test-invocations/${invocationId}`);
     } catch (e) {
-      console.warn('pollInvocation fetch error (will retry):', e);
-      continue;
+      console.warn(`[pollInvocation] attempt ${attempt} fetch error (will retry):`, e);
+      continue; // network blip — retry
     }
 
-    console.log('[pollInvocation] raw response:', JSON.stringify(data));
+    console.log(`[pollInvocation] attempt ${attempt}/${POLL_MAX_ATTEMPTS} status:`, data.status, JSON.stringify(data));
 
-    const st = (data.status || '').toLowerCase();
+    const st = (data.status || '').toLowerCase().trim();
 
-    if (st === 'completed' || st === 'finished' || st === 'done') {
-      // Tally per-test pass/fail from test_runs array if present
+    if (TERMINAL_STATUSES.has(st)) {
+      // ── Terminal: determine pass/fail ───────────────────────
+      const isFailure = st === 'failed' || st === 'failure' || st === 'error' ||
+                        st === 'errored' || st === 'cancelled' || st === 'canceled';
+      if (isFailure) {
+        return { outcome: 'failure', passed: 0, total: 0 };
+      }
+
+      // Passed terminal — tally individual test results if available
       const runs = data.test_runs || data.tests || [];
       if (runs.length) {
-        const passed = runs.filter(r => r.passed === true || r.status === 'passed' || r.result === 'pass').length;
-        return { outcome: passed >= 2 ? 'success' : 'failure', passed, total: runs.length };
+        const passed = runs.filter(r =>
+          r.passed === true ||
+          (r.status || '').toLowerCase() === 'passed' ||
+          (r.result || '').toLowerCase() === 'pass'
+        ).length;
+        return { outcome: passed >= Math.ceil(runs.length / 2) ? 'success' : 'failure', passed, total: runs.length };
       }
-      // Fallback: top-level passed flag
-      return { outcome: data.passed === true ? 'success' : 'failure', passed: data.passed ? 1 : 0, total: 1 };
+
+      // No sub-runs — treat top-level as the result
+      return { outcome: data.passed === false ? 'failure' : 'success', passed: data.passed === false ? 0 : 1, total: 1 };
     }
 
-    if (st === 'failed' || st === 'error' || st === 'cancelled') {
-      return { outcome: 'failure', passed: 0, total: 0 };
-    }
-
-    // pending | processing | running — keep waiting
+    // Non-terminal status (pending / processing / running / queued / etc.) — keep polling
+    // Update badge to show progress
+    setTestStatus('pending', `attempt ${attempt}/${POLL_MAX_ATTEMPTS}`);
   }
 
-  return { outcome: 'failure', passed: 0, total: 0 }; // timed out
+  // Exhausted all attempts without a terminal status — treat as failure/timeout
+  console.warn('[pollInvocation] timed out after', POLL_MAX_ATTEMPTS, 'attempts');
+  return { outcome: 'failure', passed: 0, total: 0 };
 }
 
-let _testRunning = false; // guard against double-clicks
+let _testRunning = false;
 
 async function runAgentTest() {
-  if (_testRunning) return; // already in progress
+  if (_testRunning) return;
 
   if (!XI_API_KEY) {
     alert('ElevenLabs API key not found for this agent.\nMake sure the api_key column is set in your agents table.');
@@ -695,8 +716,7 @@ async function runAgentTest() {
   setTestStatus('pending', 'Starting…');
 
   try {
-    // ── Step 1: POST once to trigger all tests ──────────────────
-    // Returns: { test_invocation_id: "...", status: "pending", ... }
+    // Step 1: Trigger all tests in a single POST
     console.log('[runAgentTest] Triggering tests for agent:', XI_AGENT_ID);
     const triggerRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/run-tests`, {
       method: 'POST',
@@ -705,10 +725,14 @@ async function runAgentTest() {
 
     console.log('[runAgentTest] Trigger response:', JSON.stringify(triggerRes));
 
-    // The API returns a single test_invocation_id for the whole batch
-    const invocationId = triggerRes.test_invocation_id
-      || (triggerRes.test_runs && triggerRes.test_runs[0]?.test_invocation_id)
-      || null;
+    // ── Handle two possible API shapes ──────────────────────────
+    // Shape A: { test_invocation_id: "...", status: "pending" }
+    // Shape B: { test_runs: [{ test_invocation_id: "...", ... }] }
+    const invocationId =
+      triggerRes.test_invocation_id ||
+      triggerRes.invocation_id ||
+      (Array.isArray(triggerRes.test_runs) && triggerRes.test_runs[0]?.test_invocation_id) ||
+      null;
 
     if (!invocationId) {
       throw new Error(`run-tests returned no invocation ID. Response: ${JSON.stringify(triggerRes)}`);
@@ -717,7 +741,7 @@ async function runAgentTest() {
     console.log('[runAgentTest] Polling invocation:', invocationId);
     setTestStatus('pending', 'Tests running…');
 
-    // ── Step 2: Poll the single invocation until done ───────────
+    // Step 2: Poll until done (bounded — will not loop forever)
     const { outcome, passed, total } = await pollInvocation(invocationId);
 
     const detail = total > 0 ? `${passed}/${total} passed` : undefined;
@@ -826,7 +850,6 @@ async function init() {
     if (currentUserRole === 'admin') document.getElementById('syncWrap').style.display = 'flex';
   }
 
-  // ── Load agent credentials from Supabase agents table ─────────
   try {
     const { data: agentRow, error } = await sb
       .from('agents')
@@ -839,13 +862,12 @@ async function init() {
     }
   } catch (e) { console.warn('Could not load agent credentials from DB:', e); }
 
-  // Init default chart filter dates
   const now = new Date();
   const from30 = new Date(now); from30.setDate(now.getDate() - 30);
   document.getElementById('cftFrom').value = from30.toISOString().slice(0,10);
   document.getElementById('cftTo').value   = now.toISOString().slice(0,10);
 
-  loadSubscriptionStatus(); // fire-and-forget, non-blocking
+  loadSubscriptionStatus();
   await loadConversations();
 }
 
@@ -903,7 +925,6 @@ function renderOverview() {
   renderChart();
 }
 
-// ── Chart filter ───────────────────────────────────────────────
 function setChartFilter(range, btn) {
   _chartRange = range;
   document.querySelectorAll('.cft-btn').forEach(b => b.classList.remove('active'));
@@ -1094,7 +1115,6 @@ function renderTranscript(row, userName) {
   const ini = initials(dName);
   const tok = rowToTokens(row);
 
-  // Right panel — cost/llm fields removed
   const ipRows = [
     { label:'Conversation ID',    value: row.conversation_id, mono:true, small:true },
     { label:'Status',             value: `<span class="sc-stat ${stClass(row.status)}" style="font-size:.65rem">${row.status||'—'}</span>`, html:true },
@@ -1243,7 +1263,6 @@ function downloadExportXlsx() {
 
   const wb = XLSX.utils.book_new();
 
-  // ── Sheet 1: Summary ─────────────────────────────────────────
   if (header.length) {
     const dataRows = rows.map(r => {
       const name    = extractUserName(r) || r.user_name || '';
@@ -1266,7 +1285,6 @@ function downloadExportXlsx() {
     XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
   }
 
-  // ── Sheet 2: Full Chat History (optional) ────────────────────
   if (inclChatHistory) {
     const chatRows = [];
     rows.forEach(r => {
@@ -1277,7 +1295,6 @@ function downloadExportXlsx() {
       const transcript = rowToTranscript(r);
 
       if (!transcript.length) {
-        // Still include a row so the session is represented
         chatRows.push({
           'Session ID':   r.conversation_id || '',
           'User Name':    userName,
@@ -1294,7 +1311,7 @@ function downloadExportXlsx() {
             ? `${String(Math.floor(t.time_in_call_secs/60)).padStart(2,'0')}:${String(t.time_in_call_secs%60).padStart(2,'0')}`
             : '';
           chatRows.push({
-            'Session ID':   idx === 0 ? (r.conversation_id || '') : '',  // only on first row per session
+            'Session ID':   idx === 0 ? (r.conversation_id || '') : '',
             'User Name':    idx === 0 ? userName    : '',
             'Date':         idx === 0 ? sessionDate : '',
             'Turn #':       idx + 1,
@@ -1305,20 +1322,19 @@ function downloadExportXlsx() {
         });
       }
 
-      // Blank separator row between sessions for readability
       chatRows.push({ 'Session ID':'','User Name':'','Date':'','Turn #':'','Speaker':'','Message':'','Time in Call':'' });
     });
 
     const chatHeader = ['Session ID','User Name','Date','Turn #','Speaker','Message','Time in Call'];
     const ws2 = XLSX.utils.json_to_sheet(chatRows, { header: chatHeader });
     ws2['!cols'] = [
-      { wch: 36 }, // Session ID
-      { wch: 20 }, // User Name
-      { wch: 22 }, // Date
-      { wch: 8  }, // Turn #
-      { wch: 16 }, // Speaker
-      { wch: 80 }, // Message (wide)
-      { wch: 12 }, // Time in Call
+      { wch: 36 },
+      { wch: 20 },
+      { wch: 22 },
+      { wch: 8  },
+      { wch: 16 },
+      { wch: 80 },
+      { wch: 12 },
     ];
     XLSX.utils.book_append_sheet(wb, ws2, 'Chat History');
   }
