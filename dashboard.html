@@ -591,6 +591,8 @@ function extractUserName(row) {
 const fmtCost    = c => { if (c === null || c === undefined) return null; if (c === 0) return '0 cr'; return `${Math.round(c)} cr`; };
 const fmtTokens  = n => { if (!n && n !== 0) return '—'; if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M'; if (n >= 1_000) return (n/1_000).toFixed(1)+'K'; return String(n); };
 
+// XI_TEST_IDS is fetched dynamically from /v1/convai/agent-testing at test time
+
 async function xiFetch(path, options = {}) {
   const res = await fetch(`https://api.elevenlabs.io${path}`, {
     ...options,
@@ -686,17 +688,17 @@ async function runAgentTest() {
   setTestStatus('pending', 'Starting…');
 
   try {
-    // Step 1: Fetch the list of tests configured for this agent
-    console.log('[runAgentTest] Fetching tests for agent:', XI_AGENT_ID);
-    const testsRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/tests`);
-    console.log('[runAgentTest] Tests response:', JSON.stringify(testsRes));
+    // Step 1: Fetch all tests from the workspace (supports pagination, max 100 per page)
+    console.log('[runAgentTest] Fetching test list from agent-testing…');
+    const testsRes = await xiFetch(`/v1/convai/agent-testing?page_size=100`);
+    console.log('[runAgentTest] agent-testing response:', JSON.stringify(testsRes));
 
-    const testIds = (testsRes.tests || testsRes || []).map(t => t.test_id || t.id).filter(Boolean);
+    const testIds = (testsRes.tests || []).map(t => t.test_id || t.id).filter(Boolean);
     if (!testIds.length) {
-      alert('No tests found for this agent.\nAdd tests in your ElevenLabs dashboard first.');
+      alert('No tests found in your ElevenLabs workspace.\nCreate tests in the ElevenLabs dashboard first.');
       return;
     }
-    console.log('[runAgentTest] Found', testIds.length, 'tests:', testIds);
+    console.log('[runAgentTest] Found', testIds.length, 'test(s):', testIds);
 
     // Step 2: POST to trigger all tests — returns { id: "suite_...", test_runs: [...] }
     console.log('[runAgentTest] Triggering for agent:', XI_AGENT_ID);
