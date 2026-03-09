@@ -600,17 +600,6 @@ const XI_TEST_IDS = [
   'test_1901khbh1446fybaxgd4sa6j4e7q',
 ];
 
-// Max number of poll attempts before giving up (30 attempts × 5s = 150s max)
-const POLL_MAX_ATTEMPTS = 30;
-const POLL_INTERVAL_MS  = 5000;
-
-// All statuses considered "terminal" by the ElevenLabs API
-const TERMINAL_STATUSES = new Set([
-  'completed', 'complete', 'finished', 'done', 'success', 'succeeded',
-  'passed',
-  'failed', 'failure', 'error', 'errored', 'cancelled', 'canceled',
-]);
-
 async function xiFetch(path, options = {}) {
   const res = await fetch(`https://api.elevenlabs.io${path}`, {
     ...options,
@@ -642,57 +631,47 @@ function setTestStatus(status, detail) {
 }
 
 /**
- * Polls a single test invocation until it reaches a terminal state.
- * Exits after POLL_MAX_ATTEMPTS polls regardless of status to prevent infinite loops.
+ * Polls GET /v1/convai/test-invocations/{id} until all test_runs have a
+ * terminal status ("passed" or "failed"). The top-level object has NO status
+ * field — only the individual test_runs do — so we check those directly.
+ * Caps at 20 attempts (20 × 5s = 100s max) to prevent infinite loops.
  */
 async function pollInvocation(invocationId) {
-  for (let attempt = 1; attempt <= POLL_MAX_ATTEMPTS; attempt++) {
-    // Wait before each poll (including the first — gives the API time to start)
-    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+  const MAX_ATTEMPTS  = 20;
+  const INTERVAL_MS   = 5000;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    await new Promise(r => setTimeout(r, INTERVAL_MS));
 
     let data;
     try {
       data = await xiFetch(`/v1/convai/test-invocations/${invocationId}`);
     } catch (e) {
-      console.warn(`[pollInvocation] attempt ${attempt} fetch error (will retry):`, e);
-      continue; // network blip — retry
+      console.warn(`[poll] attempt ${attempt} error (retrying):`, e);
+      continue;
     }
 
-    console.log(`[pollInvocation] attempt ${attempt}/${POLL_MAX_ATTEMPTS} status:`, data.status, JSON.stringify(data));
+    console.log(`[poll] attempt ${attempt}/${MAX_ATTEMPTS}:`, JSON.stringify(data));
 
-    const st = (data.status || '').toLowerCase().trim();
+    const runs = data.test_runs || [];
 
-    if (TERMINAL_STATUSES.has(st)) {
-      // ── Terminal: determine pass/fail ───────────────────────
-      const isFailure = st === 'failed' || st === 'failure' || st === 'error' ||
-                        st === 'errored' || st === 'cancelled' || st === 'canceled';
-      if (isFailure) {
-        return { outcome: 'failure', passed: 0, total: 0 };
-      }
+    // Wait until ALL runs have a terminal status before reading results
+    const allDone = runs.length > 0 && runs.every(r => {
+      const st = (r.status || '').toLowerCase();
+      return st === 'passed' || st === 'failed' || st === 'error' || st === 'cancelled';
+    });
 
-      // Passed terminal — tally individual test results if available
-      const runs = data.test_runs || data.tests || [];
-      if (runs.length) {
-        const passed = runs.filter(r =>
-          r.passed === true ||
-          (r.status || '').toLowerCase() === 'passed' ||
-          (r.result || '').toLowerCase() === 'pass'
-        ).length;
-        return { outcome: passed >= Math.ceil(runs.length / 2) ? 'success' : 'failure', passed, total: runs.length };
-      }
-
-      // No sub-runs — treat top-level as the result
-      return { outcome: data.passed === false ? 'failure' : 'success', passed: data.passed === false ? 0 : 1, total: 1 };
+    if (allDone) {
+      const passed = runs.filter(r => (r.status || '').toLowerCase() === 'passed').length;
+      const total  = runs.length;
+      return { passed, total, outcome: passed === total ? 'success' : 'failure' };
     }
 
-    // Non-terminal status (pending / processing / running / queued / etc.) — keep polling
-    // Update badge to show progress
-    setTestStatus('pending', `attempt ${attempt}/${POLL_MAX_ATTEMPTS}`);
+    setTestStatus('pending', `${attempt}/${MAX_ATTEMPTS}`);
   }
 
-  // Exhausted all attempts without a terminal status — treat as failure/timeout
-  console.warn('[pollInvocation] timed out after', POLL_MAX_ATTEMPTS, 'attempts');
-  return { outcome: 'failure', passed: 0, total: 0 };
+  console.warn('[poll] timed out after', MAX_ATTEMPTS, 'attempts');
+  return { passed: 0, total: 0, outcome: 'failure' };
 }
 
 let _testRunning = false;
@@ -716,36 +695,25 @@ async function runAgentTest() {
   setTestStatus('pending', 'Starting…');
 
   try {
-    // Step 1: Trigger all tests in a single POST
-    console.log('[runAgentTest] Triggering tests for agent:', XI_AGENT_ID);
+    // Step 1: POST to trigger tests — returns { id: "suite_...", test_runs: [...] }
+    console.log('[runAgentTest] Triggering for agent:', XI_AGENT_ID);
     const triggerRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/run-tests`, {
       method: 'POST',
       body: JSON.stringify({ tests: XI_TEST_IDS.map(id => ({ test_id: id })) }),
     });
+    console.log('[runAgentTest] POST response:', JSON.stringify(triggerRes));
 
-    console.log('[runAgentTest] Trigger response:', JSON.stringify(triggerRes));
-
-    // ── Handle two possible API shapes ──────────────────────────
-    // Shape A: { test_invocation_id: "...", status: "pending" }
-    // Shape B: { test_runs: [{ test_invocation_id: "...", ... }] }
-    const invocationId =
-      triggerRes.test_invocation_id ||
-      triggerRes.invocation_id ||
-      (Array.isArray(triggerRes.test_runs) && triggerRes.test_runs[0]?.test_invocation_id) ||
-      null;
-
+    // The suite ID is in `id` (not `test_invocation_id`)
+    const invocationId = triggerRes.id || triggerRes.test_invocation_id || null;
     if (!invocationId) {
-      throw new Error(`run-tests returned no invocation ID. Response: ${JSON.stringify(triggerRes)}`);
+      throw new Error(`No invocation ID in response: ${JSON.stringify(triggerRes)}`);
     }
 
-    console.log('[runAgentTest] Polling invocation:', invocationId);
     setTestStatus('pending', 'Tests running…');
 
-    // Step 2: Poll until done (bounded — will not loop forever)
+    // Step 2: Poll GET /v1/convai/test-invocations/{id} until all runs are done
     const { outcome, passed, total } = await pollInvocation(invocationId);
-
-    const detail = total > 0 ? `${passed}/${total} passed` : undefined;
-    setTestStatus(outcome, detail);
+    setTestStatus(outcome, total > 0 ? `${passed}/${total} passed` : undefined);
 
   } catch (err) {
     setTestStatus('failure');
