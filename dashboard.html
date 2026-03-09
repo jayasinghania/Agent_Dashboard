@@ -591,7 +591,13 @@ function extractUserName(row) {
 const fmtCost    = c => { if (c === null || c === undefined) return null; if (c === 0) return '0 cr'; return `${Math.round(c)} cr`; };
 const fmtTokens  = n => { if (!n && n !== 0) return '—'; if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M'; if (n >= 1_000) return (n/1_000).toFixed(1)+'K'; return String(n); };
 
-// XI_TEST_IDS is fetched dynamically from /v1/convai/agent-testing at test time
+// ── Hardcoded test IDs to run ─────────────────────────────────
+const XI_TEST_IDS = [
+  'test_8001khttb2hjfy9t68fcgt8d7pg9',
+  'test_3501khk9es7se6sa5v80dqfymy5p',
+  'test_2701khnh1ehqf85a5h411bhn410s',
+  'test_1601khnxeyt8e6nrs7e9nwh1af0b',
+];
 
 async function xiFetch(path, options = {}) {
   const res = await fetch(`https://api.elevenlabs.io${path}`, {
@@ -624,14 +630,14 @@ function setTestStatus(status, detail) {
 }
 
 /**
- * Polls GET /v1/convai/test-invocations/{id} until all test_runs have a
- * terminal status ("passed" or "failed"). The top-level object has NO status
- * field — only the individual test_runs do — so we check those directly.
- * Caps at 20 attempts (20 × 5s = 100s max) to prevent infinite loops.
+ * Polls GET /v1/convai/test-invocations/{id} until our 4 specific test runs
+ * all have a terminal status ("passed" or "failed").
+ * Only counts the runs whose test_id is in XI_TEST_IDS — ignores the rest.
+ * Caps at 24 attempts × 5s = 120s max.
  */
 async function pollInvocation(invocationId) {
-  const MAX_ATTEMPTS  = 20;
-  const INTERVAL_MS   = 5000;
+  const MAX_ATTEMPTS = 24;
+  const INTERVAL_MS  = 5000;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     await new Promise(r => setTimeout(r, INTERVAL_MS));
@@ -644,27 +650,23 @@ async function pollInvocation(invocationId) {
       continue;
     }
 
-    console.log(`[poll] attempt ${attempt}/${MAX_ATTEMPTS}:`, JSON.stringify(data));
+    // Only look at the 4 runs we triggered
+    const allRuns    = data.test_runs || [];
+    const ourRuns    = allRuns.filter(r => XI_TEST_IDS.includes(r.test_id));
+    const terminal   = st => st === 'passed' || st === 'failed' || st === 'error' || st === 'cancelled';
+    const doneRuns   = ourRuns.filter(r => terminal((r.status || '').toLowerCase()));
+    const passedRuns = ourRuns.filter(r => (r.status || '').toLowerCase() === 'passed');
 
-    const runs = data.test_runs || [];
+    console.log(`[poll] attempt ${attempt}/${MAX_ATTEMPTS} — our runs: ${doneRuns.length}/${ourRuns.length} done, ${passedRuns.length} passed`);
+    setTestStatus('pending', `${doneRuns.length}/${XI_TEST_IDS.length} done`);
 
-    // Wait until ALL runs have a terminal status before reading results
-    const allDone = runs.length > 0 && runs.every(r => {
-      const st = (r.status || '').toLowerCase();
-      return st === 'passed' || st === 'failed' || st === 'error' || st === 'cancelled';
-    });
-
-    if (allDone) {
-      const passed = runs.filter(r => (r.status || '').toLowerCase() === 'passed').length;
-      const total  = runs.length;
-      return { passed, total, outcome: passed === total ? 'success' : 'failure' };
+    if (ourRuns.length === XI_TEST_IDS.length && doneRuns.length === ourRuns.length) {
+      return { passed: passedRuns.length, total: ourRuns.length, outcome: passedRuns.length === ourRuns.length ? 'success' : 'failure' };
     }
-
-    setTestStatus('pending', `${attempt}/${MAX_ATTEMPTS}`);
   }
 
-  console.warn('[poll] timed out after', MAX_ATTEMPTS, 'attempts');
-  return { passed: 0, total: 0, outcome: 'failure' };
+  console.warn('[poll] timed out');
+  return { passed: 0, total: XI_TEST_IDS.length, outcome: 'failure' };
 }
 
 let _testRunning = false;
@@ -688,35 +690,22 @@ async function runAgentTest() {
   setTestStatus('pending', 'Starting…');
 
   try {
-    // Step 1: Fetch all tests from the workspace (supports pagination, max 100 per page)
-    console.log('[runAgentTest] Fetching test list from agent-testing…');
-    const testsRes = await xiFetch(`/v1/convai/agent-testing?page_size=100`);
-    console.log('[runAgentTest] agent-testing response:', JSON.stringify(testsRes));
-
-    const allTests = testsRes.tests || [];
-    const agentTests = allTests.filter(t => !t.agent_id || t.agent_id === XI_AGENT_ID);
-    const testIds = agentTests.map(t => t.test_id || t.id).filter(Boolean);
-    if (!testIds.length) {
-      alert('No tests found for this agent.\nCreate tests in the ElevenLabs dashboard first.');
-      return;
-    }
-    console.log('[runAgentTest] Running', testIds.length, 'test(s) for agent:', testIds);
-
-    // Step 2: POST to trigger all tests — returns { id: "suite_...", test_runs: [...] }
-    console.log('[runAgentTest] Triggering for agent:', XI_AGENT_ID);
+    // POST to trigger exactly our 4 tests
+    // Response shape: { id: "suite_...", test_runs: [...] }
+    console.log('[runAgentTest] Triggering', XI_TEST_IDS.length, 'tests for agent:', XI_AGENT_ID);
     const triggerRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/run-tests`, {
       method: 'POST',
-      body: JSON.stringify({ tests: testIds.map(id => ({ test_id: id })) }),
+      body: JSON.stringify({ tests: XI_TEST_IDS.map(id => ({ test_id: id })) }),
     });
     console.log('[runAgentTest] POST response:', JSON.stringify(triggerRes));
 
-    // The suite ID is in `id` (not `test_invocation_id`)
+    // Suite ID lives in `id`, not `test_invocation_id`
     const invocationId = triggerRes.id || triggerRes.test_invocation_id || null;
     if (!invocationId) {
       throw new Error(`No invocation ID in response: ${JSON.stringify(triggerRes)}`);
     }
 
-    setTestStatus('pending', 'Tests running…');
+    setTestStatus('pending', '0/4 done');
 
     // Step 2: Poll GET /v1/convai/test-invocations/{id} until all runs are done
     const { outcome, passed, total } = await pollInvocation(invocationId);
