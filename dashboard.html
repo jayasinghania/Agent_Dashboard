@@ -488,6 +488,9 @@ let _testStatus = 'idle';
 let XI_API_KEY  = '';
 let XI_AGENT_ID = agentIdVal;
 
+// ── Test IDs loaded dynamically from DB (no hardcoding) ───────
+let XI_TEST_IDS = [];
+
 async function backendFetch(path, options = {}) {
   const { data: { session } } = await sb.auth.getSession();
   const token = session?.access_token;
@@ -591,14 +594,6 @@ function extractUserName(row) {
 const fmtCost    = c => { if (c === null || c === undefined) return null; if (c === 0) return '0 cr'; return `${Math.round(c)} cr`; };
 const fmtTokens  = n => { if (!n && n !== 0) return '—'; if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M'; if (n >= 1_000) return (n/1_000).toFixed(1)+'K'; return String(n); };
 
-// ── Hardcoded test IDs to run ─────────────────────────────────
-const XI_TEST_IDS = [
-  'test_8001khttb2hjfy9t68fcgt8d7pg9',
-  'test_3501khk9es7se6sa5v80dqfymy5p',
-  'test_2701khnh1ehqf85a5h411bhn410s',
-  'test_1601khnxeyt8e6nrs7e9nwh1af0b',
-];
-
 async function xiFetch(path, options = {}) {
   const res = await fetch(`https://api.elevenlabs.io${path}`, {
     ...options,
@@ -630,9 +625,8 @@ function setTestStatus(status, detail) {
 }
 
 /**
- * Polls GET /v1/convai/test-invocations/{id} until our 4 specific test runs
- * all have a terminal status ("passed" or "failed").
- * Only counts the runs whose test_id is in XI_TEST_IDS — ignores the rest.
+ * Polls GET /v1/convai/test-invocations/{id} until all test runs
+ * loaded from DB have a terminal status ("passed" or "failed").
  * Caps at 24 attempts × 5s = 120s max.
  */
 async function pollInvocation(invocationId) {
@@ -650,7 +644,6 @@ async function pollInvocation(invocationId) {
       continue;
     }
 
-    // Only look at the 4 runs we triggered
     const allRuns    = data.test_runs || [];
     const ourRuns    = allRuns.filter(r => XI_TEST_IDS.includes(r.test_id));
     const terminal   = st => st === 'passed' || st === 'failed' || st === 'error' || st === 'cancelled';
@@ -674,6 +667,10 @@ let _testRunning = false;
 async function runAgentTest() {
   if (_testRunning) return;
 
+  if (!XI_TEST_IDS.length) {
+    alert('No tests configured for this agent.\nAdd test IDs in the agent_tests table.');
+    return;
+  }
   if (!XI_API_KEY) {
     alert('ElevenLabs API key not found for this agent.\nMake sure the api_key column is set in your agents table.');
     return;
@@ -690,8 +687,6 @@ async function runAgentTest() {
   setTestStatus('pending', 'Starting…');
 
   try {
-    // POST to trigger exactly our 4 tests
-    // Response shape: { id: "suite_...", test_runs: [...] }
     console.log('[runAgentTest] Triggering', XI_TEST_IDS.length, 'tests for agent:', XI_AGENT_ID);
     const triggerRes = await xiFetch(`/v1/convai/agents/${XI_AGENT_ID}/run-tests`, {
       method: 'POST',
@@ -699,15 +694,13 @@ async function runAgentTest() {
     });
     console.log('[runAgentTest] POST response:', JSON.stringify(triggerRes));
 
-    // Suite ID lives in `id`, not `test_invocation_id`
     const invocationId = triggerRes.id || triggerRes.test_invocation_id || null;
     if (!invocationId) {
       throw new Error(`No invocation ID in response: ${JSON.stringify(triggerRes)}`);
     }
 
-    setTestStatus('pending', '0/4 done');
+    setTestStatus('pending', `0/${XI_TEST_IDS.length} done`);
 
-    // Step 2: Poll GET /v1/convai/test-invocations/{id} until all runs are done
     const { outcome, passed, total } = await pollInvocation(invocationId);
     setTestStatus(outcome, total > 0 ? `${passed}/${total} passed` : undefined);
 
@@ -814,6 +807,7 @@ async function init() {
     if (currentUserRole === 'admin') document.getElementById('syncWrap').style.display = 'flex';
   }
 
+  // ── Load agent credentials ────────────────────────────────
   try {
     const { data: agentRow, error } = await sb
       .from('agents')
@@ -825,6 +819,23 @@ async function init() {
       if (agentRow.agent_id) XI_AGENT_ID = agentRow.agent_id;
     }
   } catch (e) { console.warn('Could not load agent credentials from DB:', e); }
+
+  // ── Load test IDs from agent_tests table ──────────────────
+  try {
+    const { data: testRows, error: testErr } = await sb
+      .from('agent_tests')
+      .select('test_id')
+      .eq('agent_id', agentDbId)
+      .order('sort_order');
+    if (!testErr && testRows?.length) {
+      XI_TEST_IDS = testRows.map(r => r.test_id);
+      console.log(`[init] Loaded ${XI_TEST_IDS.length} test IDs from DB:`, XI_TEST_IDS);
+    } else {
+      console.warn('[init] No test IDs found in DB for this agent.');
+    }
+  } catch (e) {
+    console.warn('[init] Could not load test IDs:', e);
+  }
 
   const now = new Date();
   const from30 = new Date(now); from30.setDate(now.getDate() - 30);
